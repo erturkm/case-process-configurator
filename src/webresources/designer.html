@@ -1,0 +1,2645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Process Designer</title>
+<style>
+:root{
+  --ink:#0F1B2D; --muted:#5B6472; --line:#E3E7ED; --bg:#F6F8FB; --panel:#FFFFFF;
+  --brand:#0F6CBD; --red:#F4364C; --magenta:#C03BC4; --purple:#8661C5;
+  --orange:#FF5C39; --green:#107C41; --amber:#C19C00;
+  --shadow:0 1px 2px rgba(15,27,45,.06),0 8px 24px rgba(15,27,45,.08);
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  font-family:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,sans-serif;
+  color:var(--ink);background:var(--bg);overflow:hidden;font-size:13px;
+}
+button{font-family:inherit;font-size:13px;cursor:pointer}
+
+#shell{display:flex;flex-direction:column;height:100%}
+#topbar{
+  display:flex;align-items:center;gap:14px;padding:0 16px;height:56px;
+  background:var(--panel);border-bottom:1px solid var(--line);flex:none;z-index:20;
+}
+#brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:14px;white-space:nowrap}
+#brand .dot{width:26px;height:26px;border-radius:8px;flex:none;
+  background:linear-gradient(135deg,var(--brand),var(--purple));}
+#tplName{
+  font-size:16px;font-weight:600;border:1px solid transparent;background:transparent;
+  padding:6px 10px;border-radius:6px;width:330px;flex:none;color:var(--ink);font-family:inherit;
+}
+#tplName:hover{background:var(--bg)}
+#tplName:focus{outline:none;border-color:var(--brand);background:#fff}
+.pill{padding:4px 11px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap}
+.pill.draft{background:#FFF4CE;color:#6B5900}
+.pill.pub{background:#DFF6E7;color:#0B5C31}
+.pill.ret{background:#F0F0F0;color:#5B6472}
+.spacer{flex:1}
+.btn{
+  border:1px solid var(--line);background:#fff;color:var(--ink);
+  padding:7px 14px;border-radius:6px;font-weight:600;transition:.12s;
+}
+.btn:hover{background:var(--bg);border-color:#C9D1DC}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+.btn.primary:hover{background:#0C5AA0}
+.btn.ghost{border-color:transparent;background:transparent;font-weight:500;color:var(--muted)}
+.btn.ghost:hover{background:var(--bg);color:var(--ink)}
+.btn.ai{background:linear-gradient(135deg,var(--purple),var(--magenta));border:none;color:#fff}
+.btn:disabled{opacity:.45;cursor:default}
+
+#main{flex:1;display:flex;min-height:0}
+
+#left{
+  width:250px;flex:none;background:var(--panel);border-right:1px solid var(--line);
+  display:flex;flex-direction:column;overflow-y:auto;
+}
+.railsec{padding:14px 16px;border-bottom:1px solid var(--line)}
+.railsec h4{
+  margin:0 0 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.9px;
+  color:var(--muted);font-weight:700;
+}
+.fld{margin-bottom:10px}
+.fld label{display:block;font-size:11.5px;color:var(--muted);margin-bottom:4px;font-weight:600}
+.fld input,.fld select,.fld textarea{
+  width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:6px;
+  font-family:inherit;font-size:12.5px;color:var(--ink);background:#fff;
+}
+.fld input:focus,.fld select:focus,.fld textarea:focus{outline:none;border-color:var(--brand)}
+.fld textarea{resize:vertical;min-height:52px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stagechip{
+  display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:6px;
+  background:var(--bg);margin-bottom:6px;font-size:12.5px;font-weight:600;
+}
+.stagechip i{width:8px;height:8px;border-radius:3px;flex:none}
+.hint{font-size:11.5px;color:var(--muted);line-height:1.5}
+
+#canvasWrap{flex:1;position:relative;overflow:hidden;background:var(--bg)}
+#svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+#zoombar{
+  position:absolute;left:14px;bottom:14px;display:flex;gap:4px;background:var(--panel);
+  border:1px solid var(--line);border-radius:8px;padding:4px;box-shadow:var(--shadow);z-index:5;
+}
+#zoombar button{
+  border:none;background:transparent;width:30px;height:28px;border-radius:5px;
+  font-size:14px;color:var(--muted);font-weight:700;
+}
+#zoombar button:hover{background:var(--bg);color:var(--ink)}
+#zoombar span{display:flex;align-items:center;padding:0 8px;font-size:11.5px;color:var(--muted)}
+#legend{
+  position:absolute;right:14px;bottom:14px;background:var(--panel);border:1px solid var(--line);
+  border-radius:8px;padding:10px 12px;box-shadow:var(--shadow);z-index:5;font-size:11px;
+}
+#legend b{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.8px;
+  color:var(--muted);margin-bottom:7px}
+#legend div{display:flex;align-items:center;gap:7px;margin-bottom:4px;color:var(--muted)}
+#legend i{width:11px;height:11px;border-radius:50%;border:2.5px solid;flex:none}
+#toast{
+  position:absolute;left:50%;top:16px;transform:translateX(-50%);z-index:40;
+  background:var(--ink);color:#fff;padding:9px 16px;border-radius:8px;font-size:12.5px;
+  box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:.2s;font-weight:500;
+  max-width:560px;
+}
+#toast.show{opacity:1}
+#toast.err{background:var(--red)}
+#empty{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:14px;color:var(--muted);pointer-events:none;
+}
+#empty .big{font-size:16px;font-weight:600;color:var(--ink)}
+#empty button{pointer-events:auto}
+
+.node{cursor:grab}
+.node text{user-select:none;pointer-events:none}
+.nodeName{font-size:12.5px;font-weight:600;fill:#0F1B2D}
+.nodeOwner{font-size:10.5px;fill:#5B6472}
+.nodeSla{font-size:17px;font-weight:700}
+.nodeSlaSub{font-size:8.5px;font-weight:700;letter-spacing:.6px;fill:#fff;opacity:.75}
+.edgeLabel{font-size:10.5px;font-weight:600}
+.stageHead{font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase}
+.handle{cursor:crosshair}
+
+#right{
+  width:330px;flex:none;background:var(--panel);border-left:1px solid var(--line);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+#rightHead{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+#rightHead .ttl{font-weight:600;font-size:13.5px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#rightBody{flex:1;overflow-y:auto;padding:14px 16px}
+#rightBody .grp{margin-bottom:18px}
+#rightBody .grp>h5{
+  margin:0 0 9px;font-size:10.5px;text-transform:uppercase;letter-spacing:.9px;
+  color:var(--muted);font-weight:700;
+}
+.chkrow{display:flex;align-items:center;gap:8px;margin-bottom:7px;font-size:12.5px}
+.chkrow input{width:15px;height:15px;accent-color:var(--brand)}
+.emptyPanel{color:var(--muted);font-size:12.5px;line-height:1.6;padding-top:6px}
+.danger{color:var(--red);border-color:#F6C6CB}
+.danger:hover{background:#FEF3F4}
+.outrow{
+  border:1px solid var(--line);border-radius:8px;padding:9px 10px;margin-bottom:8px;
+  cursor:pointer;transition:.12s;
+}
+.outrow:hover{border-color:var(--brand);background:var(--bg)}
+.outrow .l{font-weight:600;font-size:12.5px;display:flex;align-items:center;gap:7px}
+.outrow .l i{width:9px;height:9px;border-radius:50%;flex:none}
+.outrow .t{font-size:11px;color:var(--muted);margin-top:3px}
+
+#copilot{
+  position:absolute;right:0;top:0;bottom:0;width:370px;background:var(--panel);
+  border-left:1px solid var(--line);box-shadow:-8px 0 28px rgba(15,27,45,.10);
+  display:flex;flex-direction:column;transform:translateX(105%);transition:transform .22s ease;
+  z-index:30;
+}
+#copilot.open{transform:none}
+#cpHead{
+  padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;
+  background:linear-gradient(135deg,rgba(134,97,197,.10),rgba(192,59,196,.08));
+}
+#cpHead .g{width:26px;height:26px;border-radius:8px;flex:none;
+  background:linear-gradient(135deg,var(--purple),var(--magenta))}
+#cpHead b{flex:1;font-size:13.5px}
+#cpLog{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+.msg{max-width:94%;padding:9px 12px;border-radius:12px;font-size:12.5px;line-height:1.55}
+.msg.me{align-self:flex-end;background:var(--brand);color:#fff;border-bottom-right-radius:4px}
+.msg.ai{align-self:flex-start;background:var(--bg);border:1px solid var(--line);
+  border-bottom-left-radius:4px}
+.msg.ai table{border-collapse:collapse;margin:7px 0;font-size:11px;width:100%}
+.msg.ai td{border:1px solid var(--line);padding:4px 6px;text-align:left}
+.msg.ai code{background:#fff;padding:1px 4px;border-radius:3px;font-size:11px}
+#cpFoot{padding:12px 16px;border-top:1px solid var(--line)}
+#cpIn{
+  width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 11px;resize:none;
+  font-family:inherit;font-size:12.5px;min-height:66px;
+}
+#cpIn:focus{outline:none;border-color:var(--purple)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:9px}
+.chip{
+  border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 11px;
+  font-size:11px;color:var(--muted);text-align:left;
+}
+.chip:hover{border-color:var(--purple);color:var(--purple)}
+.spin{
+  width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--purple);
+  border-radius:50%;animation:sp .7s linear infinite;display:inline-block;vertical-align:-2px;
+}
+@keyframes sp{to{transform:rotate(360deg)}}
+#veil{
+  position:absolute;inset:0;background:rgba(246,248,251,.75);z-index:50;
+  display:flex;align-items:center;justify-content:center;gap:10px;font-weight:600;color:var(--muted);
+}
+#veil.hide{display:none}
+
+/* ---------------- modals ---------------- */
+.modal{
+  position:fixed;inset:0;z-index:60;background:rgba(15,27,45,.42);
+  display:flex;align-items:center;justify-content:center;padding:32px;
+}
+.modal.hide{display:none}
+.sheet{
+  background:var(--panel);border-radius:14px;box-shadow:0 24px 64px rgba(15,27,45,.28);
+  display:flex;flex-direction:column;max-height:100%;width:100%;overflow:hidden;
+}
+.sheet.sm{max-width:760px}
+.sheet.md{max-width:980px}
+.sheet.lg{max-width:1140px}
+.sheetHead{
+  display:flex;align-items:center;gap:12px;padding:16px 22px;border-bottom:1px solid var(--line);flex:none;
+}
+.sheetHead h3{margin:0;font-size:16px;font-weight:650}
+.sheetHead .sub{font-size:12px;color:var(--muted);font-weight:500}
+.sheetBody{padding:18px 22px;overflow-y:auto;flex:1}
+.sheetFoot{
+  display:flex;align-items:center;gap:10px;padding:14px 22px;border-top:1px solid var(--line);
+  background:var(--bg);flex:none;
+}
+.xbtn{
+  border:none;background:transparent;font-size:20px;line-height:1;color:var(--muted);
+  width:32px;height:32px;border-radius:6px;
+}
+.xbtn:hover{background:var(--bg);color:var(--ink)}
+
+/* ---------------- open gallery ---------------- */
+#openSearch{
+  width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;
+  font-family:inherit;font-size:13.5px;margin-bottom:14px;
+}
+#openSearch:focus{outline:none;border-color:var(--brand)}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+.tcard{
+  border:1px solid var(--line);border-radius:10px;padding:14px;background:#fff;
+  cursor:pointer;transition:.12s;text-align:left;display:flex;flex-direction:column;gap:8px;
+}
+.tcard:hover{border-color:var(--brand);box-shadow:var(--shadow);transform:translateY(-1px)}
+.tcard .t{display:flex;align-items:center;gap:8px}
+.tcard .t b{font-size:13.5px;font-weight:650;flex:1}
+.tcard .d{font-size:11.5px;color:var(--muted);line-height:1.5;min-height:17px}
+.tcard .m{display:flex;flex-wrap:wrap;gap:6px}
+.tag{
+  font-size:10.5px;font-weight:600;padding:3px 8px;border-radius:999px;
+  background:var(--bg);color:var(--muted);white-space:nowrap;
+}
+.tag.b{background:#EAF3FB;color:#0C5AA0}
+.tag.w{background:#FFF4CE;color:#6B5900}
+.tcard.newp{border-style:dashed;align-items:center;justify-content:center;text-align:center;
+  color:var(--brand);font-weight:650;min-height:118px}
+.tcard.newp:hover{background:#F5FAFF}
+
+/* ---------------- searchable lookup ---------------- */
+.lk{position:relative}
+.lk input{
+  width:100%;padding:7px 26px 7px 9px;border:1px solid var(--line);border-radius:6px;
+  font-family:inherit;font-size:12.5px;color:var(--ink);background:#fff;
+}
+.lk input:focus{outline:none;border-color:var(--brand)}
+.lk .clr{
+  position:absolute;right:4px;top:4px;border:none;background:transparent;color:var(--muted);
+  width:20px;height:22px;border-radius:4px;font-size:14px;line-height:1;
+}
+.lk .clr:hover{background:var(--bg);color:var(--ink)}
+.lkmenu{
+  position:absolute;left:0;right:0;top:calc(100% + 3px);background:#fff;z-index:30;
+  border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);
+  max-height:230px;overflow-y:auto;padding:4px;
+}
+.lkmenu.hide{display:none}
+.lkmenu button{
+  display:block;width:100%;text-align:left;border:none;background:transparent;
+  padding:7px 9px;border-radius:5px;font-size:12.5px;color:var(--ink);
+}
+.lkmenu button:hover,.lkmenu button.on{background:#EAF3FB;color:#0C5AA0}
+.lkmenu .em{padding:9px;font-size:11.5px;color:var(--muted)}
+.lkmenu button small{display:block;color:var(--muted);font-size:10.5px;margin-top:1px}
+
+/* ---------------- rule builder ---------------- */
+.grpcard{
+  border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;background:#fff;
+}
+.grpcard > .gh{
+  display:flex;align-items:center;gap:8px;margin-bottom:10px;
+  font-size:10.5px;text-transform:uppercase;letter-spacing:.9px;color:var(--muted);font-weight:700;
+}
+.grpcard > .gh .sp{flex:1}
+.rulerow{
+  display:grid;grid-template-columns:minmax(150px,1.2fr) 140px minmax(150px,1.3fr) 30px;
+  gap:8px;align-items:start;margin-bottom:8px;
+}
+.rulerow select,.rulerow input:not([type="checkbox"]){
+  width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:6px;
+  font-family:inherit;font-size:12.5px;background:#fff;color:var(--ink);
+}
+.rulerow input[type="checkbox"]{width:auto;flex:none;margin:0}
+.rulerow select:focus,.rulerow input:focus{outline:none;border-color:var(--brand)}
+.iconbtn{
+  border:1px solid var(--line);background:#fff;color:var(--muted);border-radius:6px;
+  width:30px;height:32px;font-size:14px;line-height:1;
+}
+.iconbtn:hover{border-color:var(--red);color:var(--red)}
+.andbar{
+  display:flex;align-items:center;gap:10px;margin:0 0 10px;color:var(--muted);font-size:11px;font-weight:700;
+}
+.andbar:before,.andbar:after{content:"";flex:1;height:1px;background:var(--line)}
+.plain{
+  background:#EAF3FB;border:1px solid #CDE3F5;border-radius:10px;padding:12px 14px;
+  font-size:13px;line-height:1.6;color:#0C5AA0;margin-bottom:14px;
+}
+.plain b{font-weight:700}
+.testres{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:12px;background:var(--bg)}
+.testres.hide{display:none}
+.testres .n{font-size:22px;font-weight:700;color:var(--brand)}
+.testres table{width:100%;border-collapse:collapse;margin-top:8px;font-size:12px}
+.testres td{padding:5px 6px;border-top:1px solid var(--line);color:var(--muted)}
+.testres td:first-child{color:var(--ink);font-weight:600}
+pre.fx{
+  background:#0F1B2D;color:#D7E3F4;padding:12px;border-radius:8px;font-size:11px;
+  overflow-x:auto;margin:10px 0 0;line-height:1.55;white-space:pre-wrap;word-break:break-all;
+}
+.chkrow2{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)}
+
+/* ---------------- document package editor ---------------- */
+.doctbl{width:100%;border-collapse:separate;border-spacing:0 6px}
+.doctbl th{
+  text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.8px;
+  color:var(--muted);font-weight:700;padding:0 8px 4px;
+}
+.doctbl td{padding:0 4px;vertical-align:middle}
+.doctbl tr.item td{background:#fff}
+.doctbl input:not([type="checkbox"]),.doctbl select{
+  width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:6px;
+  font-family:inherit;font-size:12.5px;background:#fff;color:var(--ink);
+}
+.doctbl input:focus,.doctbl select:focus{outline:none;border-color:var(--brand)}
+.doctbl .ctr{text-align:center}
+.lkchips{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:5px}
+.lkchip{
+  display:inline-flex;align-items:center;gap:4px;background:#EAF2FB;color:var(--brand);
+  border-radius:12px;padding:2px 4px 2px 9px;font-size:11px;font-weight:600;
+}
+.lkchip button{
+  border:none;background:none;color:var(--brand);cursor:pointer;font-size:13px;
+  line-height:1;padding:0 3px;opacity:.7;
+}
+.lkchip button:hover{opacity:1}
+.railbtn{
+  width:100%;border:1px dashed var(--line);background:var(--bg);color:var(--muted);
+  border-radius:8px;padding:9px;font-weight:600;font-size:12px;
+}
+.railbtn:hover{border-color:var(--brand);color:var(--brand);background:#F5FAFF}
+.summaryline{
+  font-size:12px;line-height:1.55;color:var(--ink);background:var(--bg);
+  border-radius:8px;padding:9px 10px;margin-bottom:9px;
+}
+.summaryline em{color:var(--muted);font-style:normal}
+</style>
+</head>
+<body>
+<div id="shell">
+
+  <div id="topbar">
+    <div id="brand"><div class="dot"></div>Process Designer</div>
+    <input id="tplName" placeholder="Untitled case process" />
+    <span id="statusPill" class="pill draft">Draft</span>
+    <div class="spacer"></div>
+    <button class="btn ghost" id="btnOpen">Open</button>
+    <button class="btn ghost" id="btnAdd">+ Add task</button>
+    <button class="btn ghost" id="btnTidy">Tidy layout</button>
+    <button class="btn ai" id="btnCopilot">Copilot</button>
+    <button class="btn" id="btnPublish">Publish</button>
+    <button class="btn primary" id="btnSave">Save</button>
+  </div>
+
+  <div id="main">
+    <div id="left">
+      <div class="railsec">
+        <h4>Which cases does this target?</h4>
+        <div id="ruleSummary" class="summaryline"><em>No conditions yet.</em></div>
+        <button class="railbtn" id="btnRules">Edit targeting conditions</button>
+        <div class="fld" style="margin-top:12px"><label>Evaluation rank</label><input id="fRank" type="number" min="1" max="999" /></div>
+        <div class="hint">Lower rank wins. The first published process whose conditions match a new
+          case is the one that gets applied.</div>
+      </div>
+      <div class="railsec">
+        <h4>Business process flow</h4>
+        <div class="fld"><label>Mapped flow</label><select id="fBpf"></select></div>
+        <div class="fld"><label>Start stage</label><select id="fStartStage"></select></div>
+        <div id="stageList"></div>
+      </div>
+      <div class="railsec">
+        <h4>Case service levels</h4>
+        <div class="row2">
+          <div class="fld"><label>First response (h)</label><input id="fFR" type="number" step="0.5" /></div>
+          <div class="fld"><label>Resolution (h)</label><input id="fRes" type="number" step="0.5" /></div>
+        </div>
+        <div class="fld"><label>SLA record</label><select id="fSla"></select></div>
+        <div class="fld"><label>Set case priority</label>
+          <select id="fPrio">
+            <option value="0">Leave as is</option><option value="1">High</option>
+            <option value="2">Normal</option><option value="3">Low</option>
+          </select>
+        </div>
+      </div>
+      <div class="railsec">
+        <h4>Documents</h4>
+        <div id="pkgSummary" class="summaryline"><em>No document package.</em></div>
+        <button class="railbtn" id="btnDocs">Edit document package</button>
+      </div>
+      <div class="railsec">
+        <h4>Description</h4>
+        <div class="fld"><textarea id="fDesc" placeholder="What is this process for?"></textarea></div>
+      </div>
+    </div>
+
+    <div id="canvasWrap">
+      <svg id="svg"></svg>
+      <div id="empty" style="display:none">
+        <div class="big">This process has no tasks yet</div>
+        <div>Add the first task, or ask Copilot to draft the whole thing.</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn primary" id="btnFirst">+ Add first task</button>
+          <button class="btn ai" id="btnAskAi">Ask Copilot</button>
+        </div>
+      </div>
+      <div id="zoombar">
+        <button id="zOut">&minus;</button>
+        <span id="zoomLbl">100%</span>
+        <button id="zIn">+</button>
+        <button id="zFit" title="Fit to screen">&#9635;</button>
+      </div>
+      <div id="legend">
+        <b>Task owner</b>
+        <div><i style="border-color:#0F6CBD"></i>Team</div>
+        <div><i style="border-color:#107C41"></i>Named user</div>
+        <div><i style="border-color:#C19C00"></i>Security role</div>
+        <div><i style="border-color:#8661C5"></i>Queue</div>
+        <div><i style="border-color:#F4364C"></i>Manager</div>
+        <div><i style="border-color:#616161"></i>Case owner</div>
+      </div>
+      <div id="toast"></div>
+      <div id="veil"><span class="spin"></span> Loading process…</div>
+    </div>
+
+    <div id="right">
+      <div id="rightHead"><span class="ttl">Nothing selected</span></div>
+      <div id="rightBody"></div>
+    </div>
+
+    <div id="copilot">
+      <div id="cpHead">
+        <div class="g"></div><b>Process Copilot</b>
+        <button class="btn ghost" id="cpClose">&times;</button>
+      </div>
+      <div id="cpLog"></div>
+      <div id="cpFoot">
+        <div class="chips">
+          <button class="chip">Complaints for Premier customers: acknowledge, verify identity, investigate, manager approval, final letter</button>
+          <button class="chip">Fraud dispute: block card, take declaration, gather evidence, raise chargeback</button>
+          <button class="chip">KYC onboarding: send checklist, validate documents, screening, approve, activate</button>
+        </div>
+        <textarea id="cpIn" placeholder="Describe the process you want…"></textarea>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn primary" style="flex:1" id="cpSendBtn">Send</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="modal hide" id="mOpen">
+  <div class="sheet lg">
+    <div class="sheetHead">
+      <h3>Case processes</h3>
+      <span class="sub" id="openCount"></span>
+      <div class="spacer"></div>
+      <button class="xbtn" data-close="mOpen">&times;</button>
+    </div>
+    <div class="sheetBody">
+      <input id="openSearch" placeholder="Search by name, business process flow or document package…" />
+      <div class="cards" id="openCards"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal hide" id="mRules">
+  <div class="sheet md">
+    <div class="sheetHead">
+      <h3>Which cases should this process apply to?</h3>
+      <div class="spacer"></div>
+      <button class="xbtn" data-close="mRules">&times;</button>
+    </div>
+    <div class="sheetBody">
+      <div class="plain" id="rulePlain"></div>
+      <div id="ruleGroups"></div>
+      <button class="railbtn" id="btnAddGroup">+ Add another condition group (AND)</button>
+      <div class="testres hide" id="ruleTest"></div>
+      <details style="margin-top:14px">
+        <summary style="cursor:pointer;font-size:12px;color:var(--muted);font-weight:600">
+          Show the equivalent FetchXML</summary>
+        <pre class="fx" id="ruleFetch">Run a test to generate the query.</pre>
+      </details>
+    </div>
+    <div class="sheetFoot">
+      <button class="btn" id="btnTestRules">Test against real cases</button>
+      <div class="spacer"></div>
+      <button class="btn ghost" data-close="mRules">Close</button>
+      <button class="btn primary" id="btnRulesDone">Apply conditions</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal hide" id="mDocs">
+  <div class="sheet md">
+    <div class="sheetHead">
+      <h3>Document package</h3>
+      <span class="sub">Attached to every case this process is applied to.</span>
+      <div class="spacer"></div>
+      <button class="xbtn" data-close="mDocs">&times;</button>
+    </div>
+    <div class="sheetBody">
+      <div class="row2" style="margin-bottom:14px">
+        <div class="fld"><label>Package name</label><input id="dpName" placeholder="e.g. Complaint evidence pack" /></div>
+        <div class="fld"><label>Start from an existing package</label><select id="dpPick"></select></div>
+      </div>
+      <div class="fld"><label>Description</label><input id="dpDesc" placeholder="What is this bundle for?" /></div>
+      <table class="doctbl">
+        <thead><tr>
+          <th style="width:30%">Document</th><th style="width:22%">Provided by</th>
+          <th style="width:12%">Due (h)</th><th style="width:9%" class="ctr">Required</th>
+          <th>Template link</th><th style="width:34px"></th>
+        </tr></thead>
+        <tbody id="dpItems"></tbody>
+      </table>
+      <button class="railbtn" id="btnAddDoc" style="margin-top:8px">+ Add document</button>
+    </div>
+    <div class="sheetFoot">
+      <button class="btn danger" id="btnDropPkg">Remove package</button>
+      <div class="spacer"></div>
+      <button class="btn ghost" data-close="mDocs">Close</button>
+      <button class="btn primary" id="btnDocsDone">Apply package</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+var P = "cpc_";
+var XRM = null;
+
+function xrm(){
+  if (XRM) return XRM;
+  var w = window;
+  for (var i = 0; i < 6 && w; i++){
+    if (w.Xrm && w.Xrm.WebApi){ XRM = w.Xrm; return XRM; }
+    if (w === w.parent) break;
+    w = w.parent;
+  }
+  return null;
+}
+function apiRoot(){
+  var x = xrm();
+  if (x && x.Utility && x.Utility.getGlobalContext){
+    try { return x.Utility.getGlobalContext().getClientUrl() + "/api/data/v9.2/"; } catch(e){}
+  }
+  return "/api/data/v9.2/";
+}
+
+/** Calls an unbound custom API through Xrm.WebApi when hosted, plain fetch otherwise. */
+function execAction(name, params){
+  var x = xrm();
+  if (x && x.WebApi && x.WebApi.online){
+    var types = {};
+    Object.keys(params || {}).forEach(function(k){
+      types[k] = { typeName: "Edm.String", structuralProperty: 1 };
+    });
+    var req = {};
+    Object.keys(params || {}).forEach(function(k){ req[k] = params[k]; });
+    req.getMetadata = function(){
+      return { boundParameter: null, parameterTypes: types, operationType: 0, operationName: name };
+    };
+    return x.WebApi.online.execute(req).then(function(res){
+      if (!res.ok) throw new Error("Request failed: " + res.status);
+      return res.json();
+    });
+  }
+  return fetch(apiRoot() + name, {
+    method: "POST", credentials: "same-origin",
+    headers: { "Content-Type": "application/json", "Accept": "application/json",
+               "OData-MaxVersion": "4.0", "OData-Version": "4.0" },
+    body: JSON.stringify(params || {})
+  }).then(function(r){
+    if (!r.ok) return r.text().then(function(t){ throw new Error(t.slice(0, 400)); });
+    return r.json();
+  });
+}
+
+/* ---------------- state ---------------- */
+var S = {
+  templateId: null,
+  header: { name: "", description: "", rank: 50, publishStatus: 1, setCasePriority: 0,
+            firstResponseHours: null, resolutionHours: null, bpfName: "", startStageName: "",
+            sla: null, documentPackage: null },
+  stages: [], nodes: [], edges: [], rules: [], pkg: null,
+  catalog: { businessProcessFlows: [], teams: [], queues: [], slas: [], documentPackages: [],
+             roles: [], existingTemplates: [], caseAttributes: [], operators: [] },
+  sel: null, view: { k: 1, x: 0, y: 0 }, dirty: false, seq: 1
+};
+
+var OPS = [[1, "is"], [2, "is not"], [3, "is any of"], [4, "is none of"], [5, "contains"],
+           [6, "begins with"], [7, "is greater than"], [8, "is less than"],
+           [9, "is empty"], [10, "is not empty"]];
+var RESPONSIBLE = [[1, "Customer"], [2, "Case owner"], [3, "Team"], [4, "Third party"]];
+
+/* ---------------- searchable lookup ---------------- */
+var LK_SEQ = 0;
+
+/**
+ * A type-ahead picker used everywhere a list is too long for a dropdown. Static sources come from
+ * the catalog; "user" queries systemuser live because a production org has thousands of them.
+ */
+function lookupHtml(id, value, placeholder){
+  return '<div class="lk" id="' + id + '">'
+    + '<input type="text" autocomplete="off" placeholder="' + esc(placeholder || "Search\u2026")
+    + '" value="' + esc(value || "") + '" />'
+    + '<button class="clr" title="Clear" tabindex="-1">&times;</button>'
+    + '<div class="lkmenu hide"></div></div>';
+}
+
+function bindLookup(id, source, onPick){
+  var host = document.getElementById(id);
+  if (!host) return;
+  var input = host.querySelector("input");
+  var menu = host.querySelector(".lkmenu");
+  var clr = host.querySelector(".clr");
+  var token = 0;
+
+  function close(){ menu.classList.add("hide"); }
+  function open(items){
+    if (!items.length){
+      menu.innerHTML = '<div class="em">No matches. Type a different name.</div>';
+    } else {
+      menu.innerHTML = items.slice(0, 40).map(function(it){
+        return '<button type="button" data-v="' + esc(it.name) + '"'
+          + (it.id ? ' data-id="' + esc(it.id) + '"' : "") + ">" + esc(it.name)
+          + (it.sub ? "<small>" + esc(it.sub) + "</small>" : "") + "</button>";
+      }).join("");
+      Array.prototype.forEach.call(menu.querySelectorAll("button"), function(b){
+        b.onmousedown = function(ev){
+          ev.preventDefault();
+          input.value = b.getAttribute("data-v");
+          close();
+          onPick(input.value, b.getAttribute("data-id"));
+        };
+      });
+    }
+    menu.classList.remove("hide");
+  }
+
+  function search(){
+    var q = input.value.trim();
+    var mine = ++token;
+    Promise.resolve(source(q)).then(function(items){
+      if (mine !== token) return;
+      open(items || []);
+    }).catch(function(){ if (mine === token) open([]); });
+  }
+
+  input.onfocus = search;
+  input.oninput = function(){ search(); onPick(input.value); };
+  input.onblur = function(){ setTimeout(close, 120); };
+  clr.onclick = function(){ input.value = ""; close(); onPick(""); };
+}
+
+/** Filters a catalog array client side. */
+function localSource(getList){
+  return function(q){
+    var s = (q || "").toLowerCase();
+    return (getList() || []).filter(function(x){
+      return !s || x.name.toLowerCase().indexOf(s) >= 0;
+    });
+  };
+}
+
+/** Queries systemuser on the server so long user lists stay usable. */
+function userSource(q){
+  var s = (q || "").replace(/'/g, "''").trim();
+  var filter = "isdisabled eq false and accessmode eq 0";
+  if (s) filter += " and (contains(fullname,'" + s + "') or contains(internalemailaddress,'" + s + "'))";
+  var url = apiRoot() + "systemusers?$select=fullname,internalemailaddress,title"
+    + "&$filter=" + encodeURIComponent(filter) + "&$orderby=fullname&$top=40";
+  return fetch(url, {
+    credentials: "same-origin",
+    headers: { "Accept": "application/json", "OData-MaxVersion": "4.0", "OData-Version": "4.0" }
+  }).then(function(r){
+    if (!r.ok) throw new Error("lookup failed");
+    return r.json();
+  }).then(function(d){
+    return (d.value || []).map(function(u){
+      return { name: u.fullname || u.internalemailaddress || "(no name)",
+               sub: [u.title, u.internalemailaddress].filter(Boolean).join(" \u00B7 ") };
+    });
+  });
+}
+
+/**
+ * Searchable list of real records behind a lookup column, so a targeting rule on Subject or
+ * Product is a click rather than a remembered name.
+ */
+function recordSource(target){
+  return function(q){
+    if (!target || !target.set) return [];
+    var s = (q || "").replace(/'/g, "''").trim();
+    var url = apiRoot() + target.set + "?$select=" + target.idAttr + "," + target.nameAttr
+      + (s ? "&$filter=" + encodeURIComponent("contains(" + target.nameAttr + ",'" + s + "')") : "")
+      + "&$orderby=" + target.nameAttr + "&$top=50";
+    return fetch(url, {
+      credentials: "same-origin",
+      headers: { "Accept": "application/json", "OData-MaxVersion": "4.0", "OData-Version": "4.0" }
+    }).then(function(r){
+      if (!r.ok) throw new Error("lookup failed");
+      return r.json();
+    }).then(function(d){
+      return (d.value || []).map(function(x){
+        return { name: x[target.nameAttr] || "(no name)", id: x[target.idAttr],
+                 sub: target.label };
+      });
+    });
+  };
+}
+
+var OWNER = {
+  1: { label: "Team", color: "#0F6CBD" },
+  2: { label: "Named user", color: "#107C41" },
+  3: { label: "Security role", color: "#C19C00" },
+  4: { label: "Queue", color: "#8661C5" },
+  5: { label: "Manager of case owner", color: "#F4364C" },
+  6: { label: "Case owner", color: "#616161" }
+};
+var SENT = {
+  1: { label: "Positive", color: "#107C41" },
+  2: { label: "Neutral", color: "#8A8886" },
+  3: { label: "Negative", color: "#F4364C" },
+  4: { label: "Terminal", color: "#605E5C" }
+};
+var STAGE_TINT = ["#0F6CBD", "#8661C5", "#FF5C39", "#107C41", "#C03BC4", "#C19C00"];
+var R = 42, ROW_H = 215, ROW_Y0 = 200;
+/* Elastic stage geometry. A stage is one sub-lane wide by default and grows a lane for every
+   ROWS_PER_LANE tasks it holds, so adding tasks widens the swimlane instead of stacking them
+   all on the same x where their captions and outcome chips collide. */
+var SUB_W = 268, ROWS_PER_LANE = 3, LANE_STAGGER = 0.3, STAGE_PAD = 30, STAGE_GAP = 18;
+
+function uid(){ return "new-" + (S.seq++) + "-" + Math.random().toString(36).slice(2, 7); }
+function isNew(id){ return String(id).indexOf("new-") === 0; }
+function nodeById(id){
+  for (var i = 0; i < S.nodes.length; i++) if (S.nodes[i].id === id) return S.nodes[i];
+  return null;
+}
+function edgeById(id){
+  for (var i = 0; i < S.edges.length; i++) if (S.edges[i].id === id) return S.edges[i];
+  return null;
+}
+function esc(s){
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
+    return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c];
+  });
+}
+function toast(msg, isErr){
+  var t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "show" + (isErr ? " err" : "");
+  clearTimeout(t._h);
+  t._h = setTimeout(function(){ t.className = ""; }, isErr ? 7000 : 2600);
+}
+function markDirty(){ S.dirty = true; }
+
+/* ---------------- load ---------------- */
+function qs(k){
+  var sp = new URLSearchParams(location.search);
+  var direct = sp.get(k);
+  if (direct) return direct;
+  var data = sp.get("data");
+  if (data){
+    try { return new URLSearchParams(decodeURIComponent(data)).get(k); } catch(e){}
+  }
+  return null;
+}
+
+function normNode(n){
+  return {
+    id: n.id, name: n.name || "Untitled task", instructions: n.instructions || "",
+    stageName: n.stageName || "", sequence: n.sequence || 0,
+    assignType: n.assignType || 1,
+    team: n.team ? (n.team.name || n.team) : "",
+    user: n.user ? (n.user.name || n.user) : "",
+    queue: n.queue ? (n.queue.name || n.queue) : "",
+    fallbackTeam: n.fallbackTeam ? (n.fallbackTeam.name || n.fallbackTeam) : "",
+    roleName: n.roleName || "",
+    dueHours: n.dueHours == null ? 24 : n.dueHours,
+    slaTargetHours: n.slaTargetHours == null ? null : n.slaTargetHours,
+    slaWarnPercent: n.slaWarnPercent == null ? 75 : n.slaWarnPercent,
+    slaStartWhen: n.slaStartWhen || 2, onBreach: n.onBreach || 2,
+    blocksStage: !!n.blocksStage, mandatory: !!n.mandatory, isStart: !!n.isStart,
+    x: n.x || 0, y: n.y || 0
+  };
+}
+function normEdge(o){
+  return {
+    id: o.id, label: o.label || "Outcome", guidance: o.guidance || "",
+    from: o.from, to: o.to || "", sentiment: o.sentiment || 2, sequence: o.sequence || 0,
+    advanceStage: !!o.advanceStage, targetStageName: o.targetStageName || "",
+    closeCase: !!o.closeCase, requireComment: !!o.requireComment, isDefault: !!o.isDefault,
+    setCasePriority: o.setCasePriority || 0
+  };
+}
+
+function formRecordId(){
+  var x = xrm();
+  try {
+    if (x && x.Page && x.Page.data && x.Page.data.entity){
+      var id = x.Page.data.entity.getId();
+      if (id) return id.replace(/[{}]/g, "");
+    }
+  } catch(e){}
+  return null;
+}
+
+/** Reloads the catalog so the open gallery and pickers reflect anything just saved. */
+function refreshCatalog(){
+  return execAction(P + "GetProcessCatalog", {})
+    .then(function(cat){ S.catalog = JSON.parse(cat.Catalog); })
+    .catch(function(){ /* keep the stale catalog rather than blanking the pickers */ });
+}
+
+function boot(){
+  var noRecord = false;
+  refreshCatalog().then(function(){
+    var id = qs("id") || qs("templateid") || qs("recordId") || formRecordId();
+    if (!id){
+      noRecord = true;
+      S.header.name = "New case process";
+      if (S.catalog.businessProcessFlows.length){
+        S.header.bpfName = S.catalog.businessProcessFlows[0].name;
+        S.stages = S.catalog.businessProcessFlows[0].stages || [];
+        S.header.startStageName = S.stages.length ? S.stages[0].name : "";
+      }
+      return null;
+    }
+    return execAction(P + "GetProcessGraph", { TemplateId: id.replace(/[{}]/g, "") })
+      .then(function(res){ absorbGraph(JSON.parse(res.Graph)); })
+      .catch(function(e){
+        noRecord = true;
+        toast("Could not load that process: " + e.message, true);
+      });
+  }).then(function(){
+    fillRail();
+    autoPlaceMissing();
+    relayoutIfStacked();
+    paintPanel();
+    render();
+    fitView();
+    S.dirty = false;
+    document.getElementById("veil").classList.add("hide");
+    cpSay("ai", "I can draft a whole case process from one sentence, then you refine it on the "
+      + "canvas. Pick a suggestion below or describe your own.");
+    if (noRecord && (S.catalog.existingTemplates || []).length) openGallery();
+  });
+}
+
+function stageIndex(name){
+  for (var i = 0; i < S.stages.length; i++) if (S.stages[i].name === name) return i;
+  return 0;
+}
+
+/** Tasks currently assigned to a stage, in the order they should be laid out. */
+function stageNodes(name){
+  return S.nodes.filter(function(n){ return n.stageName === name; })
+    .sort(function(a, b){ return (a.sequence || 0) - (b.sequence || 0); });
+}
+
+/** How many sub-lanes a stage needs, and how many tasks go down each one. */
+function laneSplit(count){
+  var lanes = Math.max(1, Math.ceil(count / ROWS_PER_LANE));
+  return { lanes: lanes, perLane: Math.max(1, Math.ceil(count / lanes)) };
+}
+
+/**
+ * Left edge and width of every stage band, laid out left to right. Each band is sized to the
+ * number of sub-lanes its tasks need, so a busy stage gets the room it deserves and the
+ * stages after it simply shift right.
+ */
+function stageGeom(){
+  var out = [], x = 160 - SUB_W / 2 - STAGE_PAD;
+  S.stages.forEach(function(s){
+    var lanes = laneSplit(stageNodes(s.name).length).lanes;
+    var w = lanes * SUB_W + STAGE_PAD * 2;
+    out.push({ name: s.name, left: x, width: w, lanes: lanes });
+    x += w + STAGE_GAP;
+  });
+  return out;
+}
+
+/** Centre x of sub-lane `lane` within stage `i`. */
+function laneX(geom, i, lane){
+  var g = geom[i] || geom[0];
+  if (!g) return 160;
+  return g.left + STAGE_PAD + lane * SUB_W + SUB_W / 2;
+}
+
+/** Which stage band a canvas x falls into — used while dragging a node between stages. */
+function stageAtX(x){
+  var geom = stageGeom();
+  for (var i = 0; i < geom.length; i++)
+    if (x < geom[i].left + geom[i].width + STAGE_GAP / 2) return i;
+  return Math.max(0, geom.length - 1);
+}
+
+/** Slot every task in a stage into its sub-lane, staggering alternate lanes vertically. */
+function layoutStage(geom, i, nodes){
+  var split = laneSplit(nodes.length);
+  nodes.forEach(function(n, k){
+    var lane = Math.floor(k / split.perLane);
+    var row = k % split.perLane;
+    n.x = laneX(geom, i, lane);
+    n.y = ROW_Y0 + row * ROW_H + (lane % 2 ? ROW_H * LANE_STAGGER : 0);
+  });
+}
+
+/**
+ * Processes saved before stages became elastic stack every task in a stage on the same x, which
+ * makes their captions and outcome chips collide. Detect that and re-flow once on open; a
+ * layout the maker has genuinely spread out is left alone.
+ */
+function relayoutIfStacked(){
+  var stacked = false;
+  S.stages.forEach(function(s){
+    var nodes = stageNodes(s.name);
+    if (nodes.length <= ROWS_PER_LANE) return;
+    var lanes = {};
+    nodes.forEach(function(n){ lanes[Math.round(n.x / 40)] = 1; });
+    if (Object.keys(lanes).length < laneSplit(nodes.length).lanes) stacked = true;
+  });
+  if (!stacked) return;
+  var geom = stageGeom();
+  S.stages.forEach(function(s, i){ layoutStage(geom, i, stageNodes(s.name)); });
+}
+
+function autoPlaceMissing(){
+  if (!S.nodes.some(function(n){ return !n.x && !n.y; })) return;
+  // Anything without saved coordinates joins the end of its stage's lane order.
+  S.nodes.forEach(function(n, i){ if (n._ord == null) n._ord = i; });
+  var geom = stageGeom();
+  S.stages.forEach(function(s, i){
+    var nodes = stageNodes(s.name);
+    if (!nodes.some(function(n){ return !n.x && !n.y; })) return;
+    layoutStage(geom, i, nodes);
+  });
+}
+
+function tidyLayout(){
+  var geom = stageGeom();
+  S.stages.forEach(function(s, i){ layoutStage(geom, i, stageNodes(s.name)); });
+  markDirty(); render(); fitView();
+  toast("Layout tidied");
+}
+
+/* ---------------- left rail ---------------- */
+function opt(v, t, sel){
+  return '<option value="' + esc(v) + '"' + (sel ? " selected" : "") + ">" + esc(t) + "</option>";
+}
+function nameOptions(list){
+  return [["", "— not set —"]].concat((list || []).map(function(x){ return [x.name, x.name]; }));
+}
+
+function fillRail(){
+  document.getElementById("tplName").value = S.header.name || "";
+  document.getElementById("fRank").value = S.header.rank == null ? 50 : S.header.rank;
+  document.getElementById("fFR").value = S.header.firstResponseHours == null ? "" : S.header.firstResponseHours;
+  document.getElementById("fRes").value = S.header.resolutionHours == null ? "" : S.header.resolutionHours;
+  document.getElementById("fDesc").value = S.header.description || "";
+  document.getElementById("fPrio").value = S.header.setCasePriority || 0;
+
+  document.getElementById("fBpf").innerHTML = S.catalog.businessProcessFlows.map(function(b){
+    return opt(b.name, b.name, b.name === S.header.bpfName); }).join("");
+  document.getElementById("fSla").innerHTML = opt("", "— none —", !S.header.sla)
+    + S.catalog.slas.map(function(s){
+        return opt(s.name, s.name, !!S.header.sla && S.header.sla.name === s.name); }).join("");
+  refreshStages();
+  refreshStatusPill();
+  refreshRuleSummary();
+  refreshPkgSummary();
+}
+function refreshStages(){
+  document.getElementById("fStartStage").innerHTML = S.stages.map(function(s){
+    return opt(s.name, s.name, s.name === S.header.startStageName); }).join("");
+  document.getElementById("stageList").innerHTML = S.stages.map(function(s, i){
+    var n = S.nodes.filter(function(x){ return x.stageName === s.name; }).length;
+    return '<div class="stagechip"><i style="background:' + STAGE_TINT[i % STAGE_TINT.length]
+      + '"></i>' + esc(s.name)
+      + '<span style="margin-left:auto;color:var(--muted);font-weight:600">' + n + "</span></div>";
+  }).join("");
+}
+function refreshStatusPill(){
+  var p = document.getElementById("statusPill");
+  var st = Number(S.header.publishStatus || 1);
+  p.className = "pill " + (st === 2 ? "pub" : st === 3 ? "ret" : "draft");
+  p.textContent = st === 2 ? "Published" : st === 3 ? "Retired" : "Draft";
+  document.getElementById("btnPublish").textContent = st === 2 ? "Unpublish" : "Publish";
+}
+
+function on(id, ev, fn){ var e = document.getElementById(id); if (e) e[ev] = fn; }
+on("tplName", "oninput", function(e){ S.header.name = e.target.value; markDirty(); });
+on("fRank", "oninput", function(e){ S.header.rank = Number(e.target.value); markDirty(); });
+on("fFR", "oninput", function(e){
+  S.header.firstResponseHours = e.target.value === "" ? null : Number(e.target.value); markDirty(); });
+on("fRes", "oninput", function(e){
+  S.header.resolutionHours = e.target.value === "" ? null : Number(e.target.value); markDirty(); });
+on("fDesc", "oninput", function(e){ S.header.description = e.target.value; markDirty(); });
+on("fPrio", "onchange", function(e){ S.header.setCasePriority = Number(e.target.value); markDirty(); });
+on("fSla", "onchange", function(e){
+  S.header.sla = e.target.value ? { name: e.target.value } : null; markDirty(); });
+on("fStartStage", "onchange", function(e){ S.header.startStageName = e.target.value; markDirty(); });
+on("fBpf", "onchange", function(e){
+  S.header.bpfName = e.target.value;
+  var b = null;
+  S.catalog.businessProcessFlows.forEach(function(x){ if (x.name === e.target.value) b = x; });
+  S.stages = b ? (b.stages || []) : [];
+  S.header.startStageName = S.stages.length ? S.stages[0].name : "";
+  S.nodes.forEach(function(n){
+    var ok = S.stages.some(function(s){ return s.name === n.stageName; });
+    if (!ok) n.stageName = S.header.startStageName;
+  });
+  refreshStages(); markDirty(); tidyLayout();
+});
+
+/* ---------------- rendering ---------------- */
+var SVGNS = "http://www.w3.org/2000/svg";
+function mk(tag, attrs, parent){
+  var el = document.createElementNS(SVGNS, tag);
+  for (var k in (attrs || {})) el.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(el);
+  return el;
+}
+function ownerColor(n){ return (OWNER[n.assignType] || OWNER[1]).color; }
+function ownerLabel(n){
+  if (n.assignType === 1) return n.team || "Team not set";
+  if (n.assignType === 2) return n.user || "User not set";
+  if (n.assignType === 3) return n.roleName || "Role not set";
+  if (n.assignType === 4) return n.queue || "Queue not set";
+  return (OWNER[n.assignType] || OWNER[6]).label;
+}
+function slaText(n){
+  var v = n.slaTargetHours;
+  if (v == null || v <= 0) return { big: "—", sub: "" };
+  if (v < 1) return { big: Math.round(v * 60) + "m", sub: "SLA" };
+  if (v >= 48) return { big: (v / 24).toFixed(v % 24 ? 1 : 0) + "d", sub: "SLA" };
+  return { big: (Math.round(v * 10) / 10) + "h", sub: "SLA" };
+}
+function nameLine(n){
+  return n.name.length > 26 ? n.name.slice(0, 25) + "\u2026" : n.name;
+}
+function ownerLine(n){
+  var o = ownerLabel(n);
+  if (o.length > 26) o = o.slice(0, 25) + "\u2026";
+  return o + (n.dueHours ? "  \u00B7  due " + n.dueHours + "h" : "");
+}
+
+/**
+ * The caption under a circle is part of the node's footprint, not free canvas. Its box is
+ * estimated up front so connectors can be routed around it before anything is drawn.
+ */
+var LBL_TOP = R + 8, LBL_BOTTOM = R + 46;
+function labelBox(n){
+  var key = nameLine(n) + "\u0000" + ownerLine(n);
+  if (n._lw == null || n._lk !== key){
+    n._lk = key;
+    n._lw = Math.max(96, nameLine(n).length * 7.0, ownerLine(n).length * 5.7) + 20;
+  }
+  return { w: n._lw, top: LBL_TOP, bottom: LBL_BOTTOM };
+}
+
+/**
+ * Point on a node's outline facing (tx,ty). A ray heading downwards that would cross the
+ * caption leaves from underneath the caption instead, so a connector never runs over the
+ * task name or its owner line.
+ */
+function boundary(n, tx, ty, pad){
+  var dx = tx - n.x, dy = ty - n.y;
+  var lb = labelBox(n);
+  if (dy > 0 && Math.abs(dx * (lb.top / dy)) < lb.w / 2 + 4){
+    var half = lb.w / 2 - 12;
+    return {
+      x: n.x + Math.max(-half, Math.min(half, dx * 0.16)),
+      y: n.y + lb.bottom + pad - 3
+    };
+  }
+  var len = Math.sqrt(dx * dx + dy * dy) || 1;
+  return { x: n.x + dx / len * (R + pad), y: n.y + dy / len * (R + pad) };
+}
+
+function render(){
+  var svg = document.getElementById("svg");
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  var defs = mk("defs", {}, svg);
+  Object.keys(SENT).forEach(function(k){
+    var m = mk("marker", { id: "arw" + k, viewBox: "0 0 10 10", refX: "9", refY: "5",
+      markerWidth: "6", markerHeight: "6", orient: "auto-start-reverse" }, defs);
+    mk("path", { d: "M0,0 L10,5 L0,10 z", fill: SENT[k].color }, m);
+  });
+  var glow = mk("filter", { id: "glow", x: "-40%", y: "-40%", width: "180%", height: "180%" }, defs);
+  mk("feDropShadow", { dx: "0", dy: "2", stdDeviation: "4",
+    "flood-color": "#0F1B2D", "flood-opacity": "0.16" }, glow);
+
+  var root = mk("g", { id: "vp",
+    transform: "translate(" + S.view.x + "," + S.view.y + ") scale(" + S.view.k + ")" }, svg);
+  var gLanes = mk("g", {}, root);
+  var gEdges = mk("g", {}, root);
+  var gNodes = mk("g", {}, root);
+  var gLabels = mk("g", {}, root);
+
+  drawLanes(gLanes);
+  drawEdges(gEdges);
+  S.nodes.forEach(function(n){ drawNode(gNodes, n); });
+  S.nodes.forEach(function(n){ drawNodeLabel(gLabels, n); });
+
+  document.getElementById("empty").style.display = S.nodes.length ? "none" : "flex";
+  document.getElementById("zoomLbl").textContent = Math.round(S.view.k * 100) + "%";
+  refreshStages();
+}
+
+function drawLanes(g){
+  var maxY = S.nodes.reduce(function(m, n){ return Math.max(m, n.y); }, 400) + 260;
+  var h = Math.max(maxY, 620);
+  var geom = stageGeom();
+
+  // Grow a band if a node has been dragged past its computed edge, so a swimlane always
+  // contains its own tasks and their captions.
+  geom.forEach(function(gm){
+    stageNodes(gm.name).forEach(function(n){
+      var half = labelBox(n).w / 2 + 18;
+      var lo = n.x - half - STAGE_PAD, hi = n.x + half + STAGE_PAD;
+      if (lo < gm.left){ gm.width += gm.left - lo; gm.left = lo; }
+      if (hi > gm.left + gm.width) gm.width = hi - gm.left;
+    });
+  });
+  // Push any band that now overlaps its neighbour to the right.
+  for (var i = 1; i < geom.length; i++){
+    var min = geom[i - 1].left + geom[i - 1].width + STAGE_GAP;
+    if (geom[i].left < min){ geom[i].width -= min - geom[i].left; geom[i].left = min; }
+    if (geom[i].width < SUB_W) geom[i].width = SUB_W;
+  }
+
+  geom.forEach(function(gm, i){
+    var c = STAGE_TINT[i % STAGE_TINT.length];
+    mk("rect", { x: gm.left, y: 40, width: gm.width, height: h, rx: 14,
+      fill: i % 2 ? "#FFFFFF" : "#FDFEFF", stroke: "#EDF1F6" }, g);
+    mk("rect", { x: gm.left, y: 40, width: gm.width, height: 34, rx: 14, fill: c, opacity: ".08" }, g);
+    var t = mk("text", { x: gm.left + 16, y: 62, "class": "stageHead", fill: c }, g);
+    t.textContent = gm.name;
+    var n = stageNodes(gm.name).length;
+    var cnt = mk("text", { x: gm.left + gm.width - 16, y: 62, "class": "stageHead", fill: c,
+      opacity: ".55", "text-anchor": "end" }, g);
+    cnt.textContent = n ? n + (n === 1 ? " task" : " tasks") : "empty";
+  });
+}
+
+function edgeGeom(a, b, idx, total){
+  if (a.id === b.id){
+    var lb = labelBox(a);
+    var y0 = a.y + lb.bottom + 2;
+    return {
+      d: "M " + (a.x - 22) + " " + y0
+         + " C " + (a.x - 104) + " " + (y0 + 78) + ", " + (a.x + 104) + " " + (y0 + 78)
+         + ", " + (a.x + 22) + " " + y0,
+      mx: a.x, my: y0 + 60
+    };
+  }
+  var s = boundary(a, b.x, b.y, 5);
+  var e = boundary(b, a.x, a.y, 12);
+  var dx = e.x - s.x, dy = e.y - s.y;
+  var len = Math.sqrt(dx * dx + dy * dy) || 1;
+  var ux = dx / len, uy = dy / len;
+  var spread = total > 1 ? (idx - (total - 1) / 2) * 56 : 0;
+  var bow = spread + (b.x - a.x < -20 ? 100 : 0);
+  var mx = (s.x + e.x) / 2 + (-uy) * bow;
+  var my = (s.y + e.y) / 2 + (ux) * bow;
+  return {
+    d: "M " + s.x + " " + s.y + " C " + (s.x + (mx - s.x) * 0.65) + " " + (s.y + (my - s.y) * 0.65)
+       + ", " + (e.x + (mx - e.x) * 0.65) + " " + (e.y + (my - e.y) * 0.65) + ", " + e.x + " " + e.y,
+    mx: mx, my: my
+  };
+}
+
+/* Real text width for a chip. Estimating from character count under-measures wide glyphs and
+   lets chips overlap even though placeLabels thought they were clear, so measure for real. */
+var _mCache = {};
+function measureLabel(txt, cls){
+  var key = cls + "\u0000" + txt;
+  if (_mCache[key] != null) return _mCache[key];
+  var svg = document.getElementById("svg");
+  if (!svg) return 16 + txt.length * 6.1;
+  var t = mk("text", { x: -9999, y: -9999, "class": cls, visibility: "hidden" }, svg);
+  t.textContent = txt;
+  var w;
+  try { w = t.getComputedTextLength(); } catch (e){ w = txt.length * 6.1; }
+  svg.removeChild(t);
+  if (!w) return 16 + txt.length * 6.1;
+  _mCache[key] = w;
+  return w;
+}
+
+/** Keeps outcome chips off each other, off the swimlane headers and off the task captions.
+    Searches a spiral of vertical then horizontal offsets around the anchor so a chip that
+    cannot escape straight up or down slides sideways instead of giving up on top of a node. */
+function placeLabels(items){
+  var LANE_HEADER_BOTTOM = 84;
+  var placed = [];
+  S.nodes.forEach(function(n){
+    var lb = labelBox(n);
+    placed.push({ x: n.x, y: n.y + (lb.top + lb.bottom) / 2, w: lb.w, h: lb.bottom - lb.top });
+    placed.push({ x: n.x, y: n.y, w: 2 * R + 14, h: 2 * R + 14 });
+  });
+
+  function clash(x, y, w){
+    for (var i = 0; i < placed.length; i++){
+      var p = placed[i];
+      if (Math.abs(p.x - x) < (p.w + w) / 2 + 8 && Math.abs(p.y - y) < (p.h || 22) / 2 + 19) return true;
+    }
+    return false;
+  }
+
+  // Longest chips first: they are the hardest to fit, so give them the free space.
+  var order = items.slice().sort(function(a, b){ return b.w - a.w; });
+
+  order.forEach(function(it){
+    var ax = it.x, ay = Math.max(it.y, LANE_HEADER_BOTTOM + 11);
+    var best = null, bestCost = Infinity;
+    var dys = [0], dxs = [0], k;
+    for (k = 1; k <= 11; k++){ dys.push(k * 27); dys.push(-k * 27); }
+    for (k = 1; k <= 2; k++){ dxs.push(k * (it.w * 0.5 + 12)); dxs.push(-k * (it.w * 0.5 + 12)); }
+
+    for (var di = 0; di < dys.length; di++){
+      for (var xi = 0; xi < dxs.length; xi++){
+        // Vertical drift is visually cheap; sideways drift drags the chip away from its
+        // edge and can push it outside the swimlane, so weight it far more heavily.
+        var cost = Math.abs(dys[di]) + Math.abs(dxs[xi]) * 3.5;
+        if (cost >= bestCost) continue;
+        var y = ay + dys[di], x = ax + dxs[xi];
+        if (y - 11 < LANE_HEADER_BOTTOM) continue;
+        if (clash(x, y, it.w)) continue;
+        bestCost = cost; best = { x: x, y: y };
+      }
+    }
+    if (!best) best = { x: ax, y: ay + 27 * 12 };
+    it.x = best.x; it.y = best.y;
+    placed.push({ x: it.x, y: it.y, w: it.w, h: 22 });
+  });
+  // Anything the layout produced must be reachable by Fit view.
+  S._chipBox = items.reduce(function(b, c){
+    return b ? { x0: Math.min(b.x0, c.x - c.w / 2), x1: Math.max(b.x1, c.x + c.w / 2),
+                 y0: Math.min(b.y0, c.y - 11), y1: Math.max(b.y1, c.y + 11) }
+             : { x0: c.x - c.w / 2, x1: c.x + c.w / 2, y0: c.y - 11, y1: c.y + 11 };
+  }, null);
+}
+
+function drawEdges(g){
+  var chips = [];
+
+  S.edges.forEach(function(e){
+    var a = nodeById(e.from);
+    if (!a) return;
+    var col = (SENT[e.sentiment] || SENT[2]).color;
+    var sibs = S.edges.filter(function(x){ return x.from === e.from; });
+    var idx = sibs.indexOf(e);
+    var geo;
+
+    if (!e.to){
+      // Terminal stubs fan out to the upper right only, so they stay clear of the caption.
+      var ang = Math.max(-1.15, Math.min(0.05, -0.72 + idx * 0.44));
+      var ex = a.x + Math.cos(ang) * 128, ey = a.y + Math.sin(ang) * 128;
+      geo = { d: "M " + (a.x + Math.cos(ang) * (R + 5)) + " " + (a.y + Math.sin(ang) * (R + 5))
+        + " L " + ex + " " + ey, mx: ex, my: ey, stub: true };
+    } else {
+      var b = nodeById(e.to);
+      if (!b) return;
+      geo = edgeGeom(a, b, idx, sibs.length);
+    }
+
+    var isSel = S.sel && S.sel.kind === "edge" && S.sel.id === e.id;
+    mk("path", { d: geo.d, fill: "none", stroke: col,
+      "stroke-width": isSel ? 3.4 : 2,
+      "stroke-dasharray": e.sentiment === 4 ? "7 5" : "",
+      opacity: isSel ? 1 : .82,
+      "marker-end": e.to ? "url(#arw" + e.sentiment + ")" : "" }, g);
+
+    if (geo.stub){
+      mk("circle", { cx: geo.mx, cy: geo.my, r: 9, fill: "#fff", stroke: col, "stroke-width": 2.5 }, g);
+      mk("rect", { x: geo.mx - 3.5, y: geo.my - 3.5, width: 7, height: 7, rx: 1.5, fill: col }, g);
+    }
+
+    var txt = e.label + (e.advanceStage ? "  \u203A" : "") + (e.closeCase ? "  \u25A0" : "");
+    if (txt.length > 30) txt = txt.slice(0, 29) + "\u2026";
+    chips.push({
+      e: e, col: col, isSel: isSel, txt: txt,
+      w: Math.min(226, measureLabel(txt, "edgeLabel") + 22),
+      x: geo.mx, y: geo.my + (geo.stub ? 25 : 0),
+      anchorX: geo.mx, anchorY: geo.my
+    });
+  });
+
+  placeLabels(chips);
+
+  chips.forEach(function(c){
+    var grp = mk("g", { style: "cursor:pointer" }, g);
+    grp.addEventListener("mousedown", function(ev){ ev.stopPropagation(); select("edge", c.e.id); });
+    if (Math.abs(c.y - c.anchorY) > 14){
+      mk("line", { x1: c.anchorX, y1: c.anchorY, x2: c.x, y2: c.y,
+        stroke: c.col, "stroke-width": 1, "stroke-dasharray": "2 3", opacity: ".5" }, grp);
+    }
+    mk("rect", { x: c.x - c.w / 2, y: c.y - 11, width: c.w, height: 22, rx: 11,
+      fill: "#fff", stroke: c.col, "stroke-width": c.isSel ? 2 : 1.2, filter: "url(#glow)" }, grp);
+    var t = mk("text", { x: c.x, y: c.y + 4, "text-anchor": "middle",
+      fill: c.col, "class": "edgeLabel" }, grp);
+    t.textContent = c.txt;
+  });
+}
+
+function drawNode(g, n){
+  var col = ownerColor(n);
+  var isSel = S.sel && S.sel.kind === "node" && S.sel.id === n.id;
+  var grp = mk("g", { "class": "node", transform: "translate(" + n.x + "," + n.y + ")" }, g);
+
+  if (isSel) mk("circle", { r: R + 9, fill: col, opacity: ".12" }, grp);
+  if (n.isStart) mk("circle", { r: R + 5, fill: "none", stroke: col, "stroke-width": 1.6,
+    "stroke-dasharray": "3 4", opacity: ".8" }, grp);
+
+  mk("circle", { r: R, fill: col, filter: "url(#glow)" }, grp);
+  mk("circle", { r: R - 4.5, fill: "none", stroke: "#fff", "stroke-width": 1.2, opacity: ".35" }, grp);
+
+  if (n.slaTargetHours > 0){
+    var pct = Math.max(5, Math.min(100, n.slaWarnPercent || 75)) / 100;
+    var circ = 2 * Math.PI * (R + 5);
+    mk("circle", { r: R + 5, fill: "none", stroke: col, "stroke-width": 3.4, opacity: ".35",
+      "stroke-dasharray": (circ * pct) + " " + circ, transform: "rotate(-90)",
+      "stroke-linecap": "round" }, grp);
+  }
+
+  var s = slaText(n);
+  var big = mk("text", { y: s.sub ? 1 : 6, "text-anchor": "middle", "class": "nodeSla",
+    fill: "#fff" }, grp);
+  big.textContent = s.big;
+  if (s.sub){
+    var sub = mk("text", { y: 14, "text-anchor": "middle", "class": "nodeSlaSub" }, grp);
+    sub.textContent = s.sub;
+  }
+
+  if (n.mandatory){
+    mk("circle", { cx: R - 9, cy: -R + 11, r: 6.5, fill: "#fff" }, grp);
+    mk("circle", { cx: R - 9, cy: -R + 11, r: 3.6, fill: "#F4364C" }, grp);
+  }
+  if (n.blocksStage){
+    mk("rect", { x: -R + 3, y: -R + 5, width: 12, height: 12, rx: 3, fill: "#fff" }, grp);
+    mk("rect", { x: -R + 6, y: -R + 8, width: 6, height: 6, rx: 1.5, fill: col }, grp);
+  }
+
+  var h = mk("g", { "class": "handle" }, grp);
+  mk("circle", { cx: R + 2, cy: 0, r: 9, fill: "#fff", stroke: col, "stroke-width": 2 }, h);
+  mk("path", { d: "M " + (R - 2) + " 0 H " + (R + 6) + " M " + (R + 2) + " -4 V 4",
+    stroke: col, "stroke-width": 2, "stroke-linecap": "round" }, h);
+  h.addEventListener("mousedown", function(ev){ startWire(ev, n); });
+
+  grp.addEventListener("mousedown", function(ev){ startDrag(ev, n); });
+}
+
+/**
+ * Captions live in their own layer above the connectors and sit on an opaque plate, so the
+ * task name and owner stay legible even where an edge passes behind them.
+ */
+function drawNodeLabel(g, n){
+  var col = ownerColor(n);
+  var isSel = S.sel && S.sel.kind === "node" && S.sel.id === n.id;
+  var grp = mk("g", { "class": "node", transform: "translate(" + n.x + "," + n.y + ")" }, g);
+
+  var plate = mk("rect", { y: LBL_TOP, height: LBL_BOTTOM - LBL_TOP, rx: 9,
+    fill: "#fff", opacity: isSel ? 1 : ".94",
+    stroke: isSel ? col : "#EDF1F6", "stroke-width": isSel ? 1.6 : 1 }, grp);
+
+  var nm = mk("text", { y: R + 23, "text-anchor": "middle", "class": "nodeName" }, grp);
+  nm.textContent = nameLine(n);
+  var ow = mk("text", { y: R + 38, "text-anchor": "middle", "class": "nodeOwner" }, grp);
+  ow.textContent = ownerLine(n);
+
+  var w = 96;
+  try {
+    w = Math.max(96, nm.getComputedTextLength(), ow.getComputedTextLength()) + 20;
+  } catch (e){ w = labelBox(n).w; }
+  n._lw = w;
+  n._lk = nameLine(n) + "\u0000" + ownerLine(n);
+  plate.setAttribute("x", -w / 2);
+  plate.setAttribute("width", w);
+
+  grp.addEventListener("mousedown", function(ev){ startDrag(ev, n); });
+}
+
+/* ---------------- interaction ---------------- */
+var svgEl = document.getElementById("svg");
+function toWorld(ev){
+  var r = svgEl.getBoundingClientRect();
+  return { x: (ev.clientX - r.left - S.view.x) / S.view.k,
+           y: (ev.clientY - r.top - S.view.y) / S.view.k };
+}
+
+function startDrag(ev, n){
+  if (ev.button !== 0) return;
+  ev.stopPropagation();
+  select("node", n.id);
+  var start = toWorld(ev);
+  var ox = n.x - start.x, oy = n.y - start.y, moved = false;
+
+  function mv(e){
+    var p = toWorld(e);
+    var nx = Math.round((p.x + ox) / 10) * 10;
+    var ny = Math.round((p.y + oy) / 10) * 10;
+    if (nx !== n.x || ny !== n.y) moved = true;
+    n.x = nx; n.y = ny;
+    var c = stageAtX(n.x);
+    if (S.stages[c] && S.stages[c].name !== n.stageName) n.stageName = S.stages[c].name;
+    render();
+  }
+  function up(){
+    document.removeEventListener("mousemove", mv);
+    document.removeEventListener("mouseup", up);
+    if (moved){ markDirty(); paintPanel(); }
+    render();
+  }
+  document.addEventListener("mousemove", mv);
+  document.addEventListener("mouseup", up);
+}
+
+function startWire(ev, from){
+  ev.stopPropagation(); ev.preventDefault();
+  var vp = document.getElementById("vp");
+  var ghost = mk("path", { fill: "none", stroke: "#0F6CBD", "stroke-width": 2.4,
+    "stroke-dasharray": "6 5" }, vp);
+
+  function mv(e){
+    var p = toWorld(e);
+    ghost.setAttribute("d", "M " + from.x + " " + from.y + " L " + p.x + " " + p.y);
+  }
+  function up(e){
+    document.removeEventListener("mousemove", mv);
+    document.removeEventListener("mouseup", up);
+    if (ghost.parentNode) ghost.parentNode.removeChild(ghost);
+    var p = toWorld(e);
+    var target = null;
+    S.nodes.forEach(function(n){
+      if (Math.sqrt(Math.pow(n.x - p.x, 2) + Math.pow(n.y - p.y, 2)) <= R + 10) target = n;
+    });
+    var hasDefault = S.edges.some(function(x){ return x.from === from.id && x.isDefault; });
+    var edge = {
+      id: uid(), label: target ? "Completed" : "Ends here", guidance: "", from: from.id,
+      to: target ? target.id : "", sentiment: target ? 1 : 4,
+      sequence: S.edges.length + 1, advanceStage: false, targetStageName: "",
+      closeCase: !target, requireComment: false, isDefault: !hasDefault, setCasePriority: 0
+    };
+    S.edges.push(edge);
+    markDirty();
+    select("edge", edge.id);
+    toast(target ? "Outcome wired \u2014 name it on the right" : "Terminal outcome added");
+  }
+  document.addEventListener("mousemove", mv);
+  document.addEventListener("mouseup", up);
+}
+
+svgEl.addEventListener("mousedown", function(ev){
+  if (ev.button !== 0 && ev.button !== 1) return;
+  select(null);
+  var sx = ev.clientX, sy = ev.clientY, ox = S.view.x, oy = S.view.y;
+  function mv(e){
+    S.view.x = ox + (e.clientX - sx);
+    S.view.y = oy + (e.clientY - sy);
+    var vp = document.getElementById("vp");
+    if (vp) vp.setAttribute("transform",
+      "translate(" + S.view.x + "," + S.view.y + ") scale(" + S.view.k + ")");
+  }
+  function up(){
+    document.removeEventListener("mousemove", mv);
+    document.removeEventListener("mouseup", up);
+  }
+  document.addEventListener("mousemove", mv);
+  document.addEventListener("mouseup", up);
+});
+
+svgEl.addEventListener("wheel", function(ev){
+  ev.preventDefault();
+  var r = svgEl.getBoundingClientRect();
+  var cx = ev.clientX - r.left, cy = ev.clientY - r.top, k0 = S.view.k;
+  var k = Math.max(0.3, Math.min(2.2, k0 * (ev.deltaY < 0 ? 1.1 : 0.9)));
+  S.view.x = cx - (cx - S.view.x) * (k / k0);
+  S.view.y = cy - (cy - S.view.y) * (k / k0);
+  S.view.k = k;
+  render();
+}, { passive: false });
+
+svgEl.addEventListener("dblclick", function(ev){
+  var p = toWorld(ev);
+  addNode(p.x, p.y);
+});
+
+function zoomBy(d){
+  var r = svgEl.getBoundingClientRect();
+  var cx = r.width / 2, cy = r.height / 2, k0 = S.view.k;
+  var k = Math.max(0.3, Math.min(2.2, k0 + d));
+  S.view.x = cx - (cx - S.view.x) * (k / k0);
+  S.view.y = cy - (cy - S.view.y) * (k / k0);
+  S.view.k = k;
+  render();
+}
+function fitView(){
+  var r = svgEl.getBoundingClientRect();
+  if (!S.nodes.length){ S.view = { k: 1, x: 40, y: 0 }; render(); return; }
+  var xs = S.nodes.map(function(n){ return n.x; });
+  var ys = S.nodes.map(function(n){ return n.y; });
+  var minX = Math.min.apply(null, xs) - 170, maxX = Math.max.apply(null, xs) + 170;
+  var minY = Math.min.apply(null, ys) - 140, maxY = Math.max.apply(null, ys) + 140;
+  var cb = S._chipBox;
+  if (cb){
+    minX = Math.min(minX, cb.x0 - 24); maxX = Math.max(maxX, cb.x1 + 24);
+    minY = Math.min(minY, cb.y0 - 24); maxY = Math.max(maxY, cb.y1 + 24);
+  }
+  var k = Math.max(0.3, Math.min(1.2,
+    Math.min(r.width / (maxX - minX), r.height / (maxY - minY))));
+  S.view.k = k;
+  S.view.x = (r.width - (maxX - minX) * k) / 2 - minX * k;
+  S.view.y = (r.height - (maxY - minY) * k) / 2 - minY * k;
+  render();
+}
+
+document.addEventListener("keydown", function(ev){
+  var tag = (ev.target && ev.target.tagName) || "";
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag)) return;
+  if ((ev.key === "Delete" || ev.key === "Backspace") && S.sel){ ev.preventDefault(); deleteSel(); }
+  if (ev.key === "Escape"){ select(null); toggleCopilot(false); }
+  if ((ev.ctrlKey || ev.metaKey) && String(ev.key).toLowerCase() === "s"){ ev.preventDefault(); save(); }
+});
+
+function addNode(x, y){
+  var stage = S.header.startStageName || (S.stages[0] && S.stages[0].name) || "";
+  var si = stageIndex(stage);
+  var count = stageNodes(stage).length;
+  // A new task lands in the next free slot of its stage, opening a fresh sub-lane if needed.
+  var split = laneSplit(count + 1);
+  var lane = Math.floor(count / split.perLane);
+  var row = count % split.perLane;
+  var n = normNode({
+    id: uid(), name: "New task", stageName: stage, sequence: S.nodes.length + 1,
+    assignType: 1, dueHours: 24, slaTargetHours: 8, slaWarnPercent: 75,
+    slaStartWhen: 2, onBreach: 2, blocksStage: true, mandatory: true,
+    isStart: S.nodes.length === 0,
+    x: x || laneX(stageGeom(), si, lane),
+    y: y || (ROW_Y0 + row * ROW_H + (lane % 2 ? ROW_H * LANE_STAGGER : 0))
+  });
+  S.nodes.push(n);
+  markDirty();
+  select("node", n.id);
+}
+
+function deleteSel(){
+  if (!S.sel) return;
+  if (S.sel.kind === "node"){
+    var id = S.sel.id;
+    S.nodes = S.nodes.filter(function(n){ return n.id !== id; });
+    S.edges = S.edges.filter(function(e){ return e.from !== id && e.to !== id; });
+    toast("Task removed");
+  } else {
+    var eid = S.sel.id;
+    S.edges = S.edges.filter(function(e){ return e.id !== eid; });
+    toast("Outcome removed");
+  }
+  markDirty();
+  select(null);
+}
+
+/* ---------------- property panel ---------------- */
+function select(kind, id){
+  S.sel = kind ? { kind: kind, id: id } : null;
+  render();
+  paintPanel();
+}
+function field(label, html){
+  return '<div class="fld"><label>' + esc(label) + "</label>" + html + "</div>";
+}
+function selectBox(id, options, value){
+  return '<select id="' + id + '">' + options.map(function(o){
+    return opt(o[0], o[1], String(o[0]) === String(value)); }).join("") + "</select>";
+}
+
+function paintPanel(){
+  var head = document.querySelector("#rightHead .ttl");
+  var body = document.getElementById("rightBody");
+  if (!S.sel){
+    head.textContent = "Nothing selected";
+    body.innerHTML = '<div class="emptyPanel">Click a task circle to configure who does it, how long '
+      + "they have and what outcomes they can record.<br/><br/>Drag the small <b>+</b> on the right of "
+      + "a circle onto another task to wire up what happens next. Drop it on empty space to make an "
+      + "outcome that ends the branch.<br/><br/>Double click the canvas to add a task.</div>";
+    return;
+  }
+  if (S.sel.kind === "node") paintNodePanel(nodeById(S.sel.id), head, body);
+  else paintEdgePanel(edgeById(S.sel.id), head, body);
+}
+
+function paintNodePanel(n, head, body){
+  if (!n){ select(null); return; }
+  var outs = S.edges.filter(function(e){ return e.from === n.id; });
+  head.textContent = n.name;
+
+  body.innerHTML =
+    '<div class="grp"><h5>Basics</h5>'
+    + field("Task name", '<input id="pName" value="' + esc(n.name) + '" />')
+    + field("Instructions for the agent",
+        '<textarea id="pInstr" placeholder="What exactly should they do?">' + esc(n.instructions) + "</textarea>")
+    + field("Stage", selectBox("pStage", S.stages.map(function(s){ return [s.name, s.name]; }), n.stageName))
+    + '<div class="chkrow"><input type="checkbox" id="pStart"' + (n.isStart ? " checked" : "")
+    + ' /><label for="pStart">Starts the process when a case matches</label></div>'
+    + '<div class="chkrow"><input type="checkbox" id="pMand"' + (n.mandatory ? " checked" : "")
+    + ' /><label for="pMand">Mandatory</label></div>'
+    + '<div class="chkrow"><input type="checkbox" id="pBlock"' + (n.blocksStage ? " checked" : "")
+    + ' /><label for="pBlock">Blocks the stage until it is done</label></div></div>'
+
+    + '<div class="grp"><h5>Ownership</h5>'
+    + field("Assign to", selectBox("pAType", Object.keys(OWNER).map(function(k){
+        return [k, OWNER[k].label]; }), n.assignType))
+    + '<div id="pAssignee"></div>'
+    + field("Fallback team", lookupHtml("lkFallback", n.fallbackTeam, "Search teams\u2026"))
+    + "</div>"
+
+    + '<div class="grp"><h5>Timing</h5><div class="row2">'
+    + field("Due in (hours)", '<input id="pDue" type="number" step="0.5" value="' + n.dueHours + '" />')
+    + field("Task SLA (hours)", '<input id="pSla" type="number" step="0.5" value="'
+        + (n.slaTargetHours == null ? "" : n.slaTargetHours) + '" />')
+    + '</div><div class="row2">'
+    + field("Warn at (%)", '<input id="pWarn" type="number" min="5" max="100" value="' + n.slaWarnPercent + '" />')
+    + field("Clock starts", selectBox("pStartWhen", [[1, "Case created"], [2, "Stage entered"],
+        [3, "Predecessor done"], [4, "Task created"]], n.slaStartWhen))
+    + "</div>"
+    + field("On breach", selectBox("pBreach", [[1, "Do nothing"], [2, "Notify task owner"],
+        [3, "Escalate to manager"], [4, "Escalate to queue"], [5, "Raise case priority"]], n.onBreach))
+    + "</div>"
+
+    + '<div class="grp"><h5>Outcomes (' + outs.length + ")</h5>"
+    + (outs.length ? outs.map(function(e){
+        return '<div class="outrow" data-eid="' + esc(e.id) + '"><div class="l"><i style="background:'
+          + SENT[e.sentiment].color + '"></i>' + esc(e.label)
+          + (e.isDefault ? '<span style="font-weight:500;color:var(--muted);font-size:10.5px">\u00B7 default</span>' : "")
+          + '</div><div class="t">'
+          + (e.to ? "\u2192 " + esc((nodeById(e.to) || {}).name || "?") : "ends this branch")
+          + "</div></div>";
+      }).join("")
+      : '<div class="hint">No outcomes yet. Drag the + on the right of this circle onto the next task.</div>')
+    + '<button class="btn" style="width:100%;margin-top:8px" id="pAddOut">+ Add outcome</button></div>'
+
+    + '<button class="btn danger" style="width:100%" id="pDel">Delete task</button>';
+
+  paintAssignee(n);
+  bindLookup("lkFallback", localSource(function(){ return S.catalog.teams; }), function(v){
+    n.fallbackTeam = v; markDirty(); render(); });
+
+  function bind(id, fn, ev){
+    var el = document.getElementById(id);
+    if (el) el[ev || "oninput"] = function(e){ fn(e.target); markDirty(); render(); };
+  }
+  bind("pName", function(t){ n.name = t.value; document.querySelector("#rightHead .ttl").textContent = t.value; });
+  bind("pInstr", function(t){ n.instructions = t.value; });
+  bind("pStage", function(t){
+    // Moving a task to another stage drops it into that stage's next free slot.
+    n.stageName = t.value;
+    var si = stageIndex(t.value);
+    var peers = stageNodes(t.value).filter(function(z){ return z.id !== n.id; });
+    var split = laneSplit(peers.length + 1);
+    var lane = Math.floor(peers.length / split.perLane);
+    n.x = laneX(stageGeom(), si, lane);
+    n.y = ROW_Y0 + (peers.length % split.perLane) * ROW_H + (lane % 2 ? ROW_H * LANE_STAGGER : 0);
+  }, "onchange");
+  bind("pStart", function(t){
+    n.isStart = t.checked;
+    if (t.checked) S.nodes.forEach(function(o){ if (o !== n) o.isStart = false; });
+  }, "onchange");
+  bind("pMand", function(t){ n.mandatory = t.checked; }, "onchange");
+  bind("pBlock", function(t){ n.blocksStage = t.checked; }, "onchange");
+  bind("pDue", function(t){ n.dueHours = Number(t.value) || 0; });
+  bind("pSla", function(t){ n.slaTargetHours = t.value === "" ? null : Number(t.value); });
+  bind("pWarn", function(t){ n.slaWarnPercent = Number(t.value) || 75; });
+  bind("pStartWhen", function(t){ n.slaStartWhen = Number(t.value); }, "onchange");
+  bind("pBreach", function(t){ n.onBreach = Number(t.value); }, "onchange");
+
+  document.getElementById("pAType").onchange = function(e){
+    n.assignType = Number(e.target.value); markDirty(); render(); paintPanel();
+  };
+  document.getElementById("pDel").onclick = function(){ deleteSel(); };
+  document.getElementById("pAddOut").onclick = function(){
+    var e = { id: uid(), label: "Outcome", guidance: "", from: n.id, to: "", sentiment: 2,
+      sequence: S.edges.length + 1, advanceStage: false, targetStageName: "", closeCase: false,
+      requireComment: false, isDefault: !outs.length, setCasePriority: 0 };
+    S.edges.push(e); markDirty(); select("edge", e.id);
+  };
+  Array.prototype.forEach.call(body.querySelectorAll(".outrow"), function(r){
+    r.onclick = function(){ select("edge", r.getAttribute("data-eid")); };
+  });
+}
+
+function paintAssignee(n){
+  var host = document.getElementById("pAssignee");
+  if (!host) return;
+  var id = "lkOwner" + (++LK_SEQ);
+
+  if (n.assignType === 1){
+    host.innerHTML = field("Team", lookupHtml(id, n.team, "Search teams\u2026"));
+    bindLookup(id, localSource(function(){ return S.catalog.teams; }), function(v){
+      n.team = v; markDirty(); render(); });
+  } else if (n.assignType === 2){
+    host.innerHTML = field("User", lookupHtml(id, n.user, "Type a name or email\u2026"))
+      + '<div class="hint" style="margin:-4px 0 10px">Searches active users in this environment.</div>';
+    bindLookup(id, userSource, function(v){ n.user = v; markDirty(); render(); });
+  } else if (n.assignType === 3){
+    host.innerHTML = field("Security role", lookupHtml(id, n.roleName, "Search security roles\u2026"));
+    bindLookup(id, localSource(function(){ return S.catalog.roles; }), function(v){
+      n.roleName = v; markDirty(); render(); });
+  } else if (n.assignType === 4){
+    host.innerHTML = field("Queue", lookupHtml(id, n.queue, "Search queues\u2026"));
+    bindLookup(id, localSource(function(){ return S.catalog.queues; }), function(v){
+      n.queue = v; markDirty(); render(); });
+  } else {
+    host.innerHTML = '<div class="hint" style="margin-bottom:10px">Resolved for each case at runtime.</div>';
+  }
+}
+
+function paintEdgePanel(e, head, body){
+  if (!e){ select(null); return; }
+  var from = nodeById(e.from);
+  head.textContent = e.label;
+
+  var toOptions = [["", "\u2014 end this branch \u2014"]]
+    .concat(S.nodes.filter(function(n){ return n.id !== e.from; })
+      .map(function(n){ return [n.id, n.name]; }));
+  if (from) toOptions.push([e.from, "\u21BA " + from.name + " (retry)"]);
+
+  body.innerHTML =
+    '<div class="grp"><h5>Outcome</h5>'
+    + '<div class="hint" style="margin-bottom:10px">Shown to the agent as a button when they complete <b>'
+    + esc(from ? from.name : "the task") + "</b>.</div>"
+    + field("Button label", '<input id="eLabel" value="' + esc(e.label) + '" />')
+    + field("Guidance", '<textarea id="eGuide" placeholder="When should they pick this?">'
+        + esc(e.guidance) + "</textarea>")
+    + field("Sentiment", selectBox("eSent", [[1, "Positive"], [2, "Neutral"], [3, "Negative"],
+        [4, "Terminal"]], e.sentiment))
+    + "</div>"
+
+    + '<div class="grp"><h5>Then do this</h5>'
+    + field("Next task", selectBox("eTo", toOptions, e.to))
+    + field("Jump to stage", selectBox("eStage", [["", "\u2014 no jump \u2014"]]
+        .concat(S.stages.map(function(s){ return [s.name, s.name]; })), e.targetStageName))
+    + '<div class="chkrow"><input type="checkbox" id="eAdv"' + (e.advanceStage ? " checked" : "")
+    + ' /><label for="eAdv">Advance to the next stage</label></div>'
+    + '<div class="chkrow"><input type="checkbox" id="eClose"' + (e.closeCase ? " checked" : "")
+    + ' /><label for="eClose">Resolve the case</label></div>'
+    + field("Set case priority", selectBox("ePrio", [[0, "Leave as is"], [1, "High"], [2, "Normal"],
+        [3, "Low"]], e.setCasePriority))
+    + "</div>"
+
+    + '<div class="grp"><h5>Agent experience</h5>'
+    + '<div class="chkrow"><input type="checkbox" id="eComment"' + (e.requireComment ? " checked" : "")
+    + ' /><label for="eComment">Require a comment</label></div>'
+    + '<div class="chkrow"><input type="checkbox" id="eDef"' + (e.isDefault ? " checked" : "")
+    + ' /><label for="eDef">Preselect this outcome</label></div></div>'
+
+    + '<button class="btn danger" style="width:100%" id="eDel">Delete outcome</button>';
+
+  function bind(id, fn, ev){
+    var el = document.getElementById(id);
+    if (el) el[ev || "oninput"] = function(x){ fn(x.target); markDirty(); render(); };
+  }
+  bind("eLabel", function(t){
+    e.label = t.value; document.querySelector("#rightHead .ttl").textContent = t.value; });
+  bind("eGuide", function(t){ e.guidance = t.value; });
+  bind("eSent", function(t){ e.sentiment = Number(t.value); }, "onchange");
+  bind("eTo", function(t){
+    e.to = t.value;
+    if (!t.value && e.sentiment === 1) e.sentiment = 4;
+  }, "onchange");
+  bind("eStage", function(t){ e.targetStageName = t.value; }, "onchange");
+  bind("eAdv", function(t){ e.advanceStage = t.checked; }, "onchange");
+  bind("eClose", function(t){ e.closeCase = t.checked; }, "onchange");
+  bind("ePrio", function(t){ e.setCasePriority = Number(t.value); }, "onchange");
+  bind("eComment", function(t){ e.requireComment = t.checked; }, "onchange");
+  bind("eDef", function(t){
+    e.isDefault = t.checked;
+    if (t.checked) S.edges.forEach(function(o){ if (o !== e && o.from === e.from) o.isDefault = false; });
+  }, "onchange");
+  document.getElementById("eDel").onclick = function(){ deleteSel(); };
+}
+
+/* ---------------- modal plumbing ---------------- */
+function showModal(id){ document.getElementById(id).classList.remove("hide"); }
+function hideModal(id){ document.getElementById(id).classList.add("hide"); }
+Array.prototype.forEach.call(document.querySelectorAll("[data-close]"), function(b){
+  b.onclick = function(){ hideModal(b.getAttribute("data-close")); };
+});
+Array.prototype.forEach.call(document.querySelectorAll(".modal"), function(m){
+  m.onmousedown = function(ev){ if (ev.target === m) m.classList.add("hide"); };
+});
+document.addEventListener("keydown", function(ev){
+  if (ev.key !== "Escape") return;
+  Array.prototype.forEach.call(document.querySelectorAll(".modal"), function(m){ m.classList.add("hide"); });
+});
+
+/* ---------------- open existing process ---------------- */
+function openGallery(){
+  showModal("mOpen");
+  document.getElementById("openSearch").value = "";
+  paintGallery("");
+  setTimeout(function(){ document.getElementById("openSearch").focus(); }, 30);
+}
+
+function paintGallery(q){
+  var all = S.catalog.existingTemplates || [];
+  var s = (q || "").toLowerCase();
+  var list = all.filter(function(t){
+    return !s || (t.name + " " + t.bpfName + " " + t.packageName + " " + (t.description || ""))
+      .toLowerCase().indexOf(s) >= 0;
+  });
+  document.getElementById("openCount").textContent =
+    list.length + " of " + all.length + " process" + (all.length === 1 ? "" : "es");
+
+  var STATUS = { 1: ["Draft", "w"], 2: ["Published", "b"], 3: ["Retired", ""] };
+  document.getElementById("openCards").innerHTML =
+    '<button class="tcard newp" data-new="1">+ Start a new process</button>'
+    + list.map(function(t){
+        var st = STATUS[t.publishStatus] || STATUS[1];
+        return '<button class="tcard" data-id="' + esc(t.id) + '">'
+          + '<div class="t"><b>' + esc(t.name) + '</b>'
+          + '<span class="tag ' + st[1] + '">' + st[0] + "</span></div>"
+          + '<div class="d">' + esc(t.description || "No description.") + "</div>"
+          + '<div class="m">'
+          + '<span class="tag">Rank ' + t.rank + "</span>"
+          + '<span class="tag">' + t.taskCount + " task" + (t.taskCount === 1 ? "" : "s") + "</span>"
+          + '<span class="tag' + (t.ruleCount ? "" : " w") + '">'
+          + (t.ruleCount ? t.ruleCount + " condition" + (t.ruleCount === 1 ? "" : "s") : "no targeting")
+          + "</span>"
+          + (t.bpfName ? '<span class="tag">' + esc(t.bpfName) + "</span>" : "")
+          + (t.packageName ? '<span class="tag">' + esc(t.packageName) + "</span>" : "")
+          + (t.appliedCount ? '<span class="tag">applied ' + t.appliedCount + "\u00D7</span>" : "")
+          + "</div></button>";
+      }).join("");
+
+  Array.prototype.forEach.call(document.getElementById("openCards").querySelectorAll(".tcard"),
+    function(c){
+      c.onclick = function(){
+        if (!confirmDiscard()) return;
+        hideModal("mOpen");
+        if (c.getAttribute("data-new")) newProcess();
+        else loadTemplate(c.getAttribute("data-id"));
+      };
+    });
+}
+
+function confirmDiscard(){
+  return !S.dirty || window.confirm("You have unsaved changes. Discard them?");
+}
+
+function newProcess(){
+  S.templateId = null;
+  S.header = { name: "New case process", description: "", rank: 50, publishStatus: 1,
+    setCasePriority: 0, firstResponseHours: null, resolutionHours: null,
+    bpfName: "", startStageName: "", sla: null, documentPackage: null };
+  S.nodes = []; S.edges = []; S.rules = []; S.pkg = null; S.dirty = false;
+  var bpfs = S.catalog.businessProcessFlows;
+  if (bpfs.length){
+    S.header.bpfName = bpfs[0].name;
+    S.stages = bpfs[0].stages || [];
+    S.header.startStageName = S.stages.length ? S.stages[0].name : "";
+  } else S.stages = [];
+  fillRail(); select(null); render(); fitView();
+}
+
+function loadTemplate(id){
+  document.getElementById("veil").classList.remove("hide");
+  return execAction(P + "GetProcessGraph", { TemplateId: String(id).replace(/[{}]/g, "") })
+    .then(function(res){
+      absorbGraph(JSON.parse(res.Graph));
+      autoPlaceMissing();
+      relayoutIfStacked();
+      fillRail(); select(null); render(); fitView();
+      S.dirty = false;
+    })
+    .catch(function(e){ toast("Could not open that process: " + e.message, true); })
+    .then(function(){ document.getElementById("veil").classList.add("hide"); });
+}
+
+/** Single place that turns a GetProcessGraph payload into designer state. */
+function absorbGraph(g){
+  S.templateId = g.template.id;
+  S.header = g.template;
+  S.stages = g.stages || [];
+  S.nodes = (g.nodes || []).map(normNode);
+  S.edges = (g.outcomes || []).map(normEdge);
+  S.rules = (g.matchRules || []).map(normRule);
+  S.pkg = g.package ? normPkg(g.package) : null;
+}
+
+function normRule(r){
+  return { id: r.id || uid(), attribute: r.attribute || "", attributeLabel: r.attributeLabel || "",
+    operator: r.operator || 1, value: r.value == null ? "" : String(r.value),
+    valueLabel: r.valueLabel || "", group: r.group || 1, sequence: r.sequence || 0 };
+}
+function normPkg(p){
+  return { id: p.id || "", name: p.name || "", description: p.description || "",
+    active: p.active !== false,
+    items: (p.items || []).map(function(i){
+      return { id: i.id || uid(), name: i.name || "", description: i.description || "",
+        sequence: i.sequence || 0, mandatory: i.mandatory !== false,
+        responsible: i.responsible || 1,
+        dueHours: i.dueHours == null ? null : i.dueHours, templateUrl: i.templateUrl || "" };
+    }) };
+}
+
+/* ---------------- targeting rule builder ---------------- */
+function attrByName(ln){
+  var found = null;
+  (S.catalog.caseAttributes || []).forEach(function(a){ if (a.logicalName === ln) found = a; });
+  return found;
+}
+
+/** Human sentence shown in the rail and at the top of the builder. */
+function rulesSentence(){
+  if (!S.rules.length) return "";
+  var groups = {};
+  S.rules.forEach(function(r){ (groups[r.group] = groups[r.group] || []).push(r); });
+  var parts = Object.keys(groups).sort(function(a, b){ return a - b; }).map(function(k){
+    var any = groups[k].map(function(r){
+      var tail = (r.operator === 9 || r.operator === 10) ? ""
+        : " <b>" + esc(r.valueLabel || r.value || "\u2026") + "</b>";
+      return esc(r.attributeLabel || r.attribute) + " " + opWord(r.operator) + tail;
+    });
+    return any.length === 1 ? any[0] : "(" + any.join(" <em>or</em> ") + ")";
+  });
+  return "Apply when " + parts.join(" <em>and</em> ") + ".";
+}
+function opWord(v){
+  var w = "is";
+  OPS.forEach(function(o){ if (o[0] === Number(v)) w = o[1]; });
+  return w;
+}
+
+function refreshRuleSummary(){
+  var el = document.getElementById("ruleSummary");
+  if (!el) return;
+  el.innerHTML = S.rules.length ? rulesSentence()
+    : "<em>No conditions yet \u2014 this process will never be picked automatically.</em>";
+}
+
+function openRules(){
+  if (!S.rules.length) addRule(1);
+  paintRules();
+  document.getElementById("ruleTest").classList.add("hide");
+  showModal("mRules");
+}
+
+function nextGroup(){
+  var max = 0;
+  S.rules.forEach(function(r){ if (r.group > max) max = r.group; });
+  return max + 1;
+}
+
+function addRule(group){
+  var attrs = S.catalog.caseAttributes || [];
+  var first = attrs.length ? attrs[0] : { logicalName: "", label: "" };
+  var pref = attrByName("cpc_casecategory") || attrByName("prioritycode") || first;
+  S.rules.push({ id: uid(), attribute: pref.logicalName, attributeLabel: pref.label,
+    operator: 1, value: "", valueLabel: "", group: group, sequence: S.rules.length + 1 });
+}
+
+function paintRules(){
+  document.getElementById("rulePlain").innerHTML = S.rules.length ? rulesSentence()
+    : "Add at least one condition, otherwise this process can only be applied by hand.";
+
+  var groups = {};
+  S.rules.forEach(function(r){ (groups[r.group] = groups[r.group] || []).push(r); });
+  var keys = Object.keys(groups).sort(function(a, b){ return a - b; });
+
+  var attrOpts = (S.catalog.caseAttributes || []).map(function(a){
+    return [a.logicalName, a.label + (a.custom ? "" : "")]; });
+
+  document.getElementById("ruleGroups").innerHTML = keys.map(function(k, gi){
+    var rows = groups[k].map(function(r){
+      return '<div class="rulerow" data-rid="' + esc(r.id) + '">'
+        + selectBox("", attrOpts, r.attribute).replace("<select", '<select data-f="attr"')
+        + selectBox("", OPS, r.operator).replace("<select", '<select data-f="op"')
+        + '<div data-f="valhost">' + valueEditor(r) + "</div>"
+        + '<button class="iconbtn" data-f="del" title="Remove condition">&times;</button>'
+        + "</div>";
+    }).join("");
+    return (gi ? '<div class="andbar">AND</div>' : "")
+      + '<div class="grpcard" data-g="' + k + '">'
+      + '<div class="gh"><span>Match any of these</span><span class="sp"></span>'
+      + '<button class="btn ghost" data-f="addrule" style="padding:3px 9px;font-size:11.5px">+ OR condition</button>'
+      + "</div>" + rows + "</div>";
+  }).join("");
+
+  wireRules();
+}
+
+/** Picks the right editor for the field type so a maker never has to type a raw option value. */
+function valueEditor(r){
+  if (r.operator === 9 || r.operator === 10)
+    return '<div class="chkrow2" style="padding-top:8px">no value needed</div>';
+  var a = attrByName(r.attribute);
+  var kind = a ? a.kind : "text";
+
+  if ((kind === "choice" || kind === "boolean") && a.options.length){
+    if (r.operator === 3 || r.operator === 4){
+      var picked = String(r.value || "").split(";").filter(Boolean);
+      return '<div style="border:1px solid var(--line);border-radius:6px;padding:6px 8px;'
+        + 'max-height:104px;overflow-y:auto;background:#fff">'
+        + a.options.map(function(o){
+            return '<label class="chkrow2" style="margin:2px 0"><input type="checkbox" data-f="multi" '
+              + 'value="' + o.value + '"' + (picked.indexOf(String(o.value)) >= 0 ? " checked" : "")
+              + " />" + esc(o.label) + "</label>";
+          }).join("") + "</div>";
+    }
+    return selectBox("", [["", "\u2014 pick \u2014"]].concat(a.options.map(function(o){
+      return [o.value, o.label]; })), r.value).replace("<select", '<select data-f="val"');
+  }
+  if (kind === "lookup" && a.targets && a.targets.length){
+    var multiLk = r.operator === 3 || r.operator === 4;
+    var chips = "";
+    if (multiLk){
+      var ids = String(r.value || "").split(";").filter(Boolean);
+      var labs = String(r.valueLabel || "").split(", ");
+      chips = '<div class="lkchips">' + ids.map(function(id, i){
+        return '<span class="lkchip">' + esc(labs[i] || id)
+          + '<button type="button" data-f="unpick" data-i="' + i + '">&times;</button></span>';
+      }).join("") + "</div>";
+    }
+    return chips + lookupHtml("lkv_" + r.id, multiLk ? "" : (r.valueLabel || r.value),
+      "Search " + (a.targets[0].label || "records") + "\u2026");
+  }
+  if (kind === "number")
+    return '<input data-f="val" type="number" step="any" value="' + esc(r.value) + '" />';
+  if (kind === "datetime")
+    return '<input data-f="val" type="date" value="' + esc(r.value) + '" />';
+  return '<input data-f="val" placeholder="Value" value="' + esc(r.value) + '" />';
+}
+
+function ruleById(id){
+  var f = null;
+  S.rules.forEach(function(r){ if (r.id === id) f = r; });
+  return f;
+}
+
+function wireRules(){
+  var host = document.getElementById("ruleGroups");
+
+  Array.prototype.forEach.call(host.querySelectorAll('[data-f="addrule"]'), function(b){
+    b.onclick = function(){
+      addRule(Number(b.parentNode.parentNode.getAttribute("data-g")));
+      markDirty(); paintRules();
+    };
+  });
+
+  Array.prototype.forEach.call(host.querySelectorAll(".rulerow"), function(row){
+    var r = ruleById(row.getAttribute("data-rid"));
+    if (!r) return;
+
+    row.querySelector('[data-f="attr"]').onchange = function(e){
+      r.attribute = e.target.value;
+      var a = attrByName(r.attribute);
+      r.attributeLabel = a ? a.label : r.attribute;
+      r.value = ""; r.valueLabel = "";
+      markDirty(); paintRules();
+    };
+    row.querySelector('[data-f="op"]').onchange = function(e){
+      r.operator = Number(e.target.value);
+      if (r.operator === 9 || r.operator === 10){ r.value = ""; r.valueLabel = ""; }
+      markDirty(); paintRules();
+    };
+    row.querySelector('[data-f="del"]').onclick = function(){
+      S.rules = S.rules.filter(function(x){ return x.id !== r.id; });
+      markDirty(); paintRules();
+    };
+
+    var val = row.querySelector('[data-f="val"]');
+    if (val){
+      val[val.tagName === "SELECT" ? "onchange" : "oninput"] = function(e){
+        r.value = e.target.value;
+        r.valueLabel = e.target.tagName === "SELECT"
+          ? (e.target.selectedOptions[0] ? e.target.selectedOptions[0].textContent : "")
+          : e.target.value;
+        markDirty();
+        document.getElementById("rulePlain").innerHTML = rulesSentence();
+      };
+    }
+
+    var ra = attrByName(r.attribute);
+    if (ra && ra.kind === "lookup" && ra.targets && ra.targets.length
+        && document.getElementById("lkv_" + r.id)){
+      var many = r.operator === 3 || r.operator === 4;
+      bindLookup("lkv_" + r.id, recordSource(ra.targets[0]), function(name, id){
+        if (!id){
+          // Free typing without a pick: clear the binding so a stale id is never saved.
+          if (!many){ r.value = ""; r.valueLabel = name; markDirty();
+            document.getElementById("rulePlain").innerHTML = rulesSentence(); }
+          return;
+        }
+        if (many){
+          var ids = String(r.value || "").split(";").filter(Boolean);
+          var labs = String(r.valueLabel || "").split(", ").filter(Boolean);
+          if (ids.indexOf(id) < 0){ ids.push(id); labs.push(name); }
+          r.value = ids.join(";");
+          r.valueLabel = labs.join(", ");
+        } else {
+          r.value = id;
+          r.valueLabel = name;
+        }
+        markDirty(); paintRules();
+      });
+      Array.prototype.forEach.call(row.querySelectorAll('[data-f="unpick"]'), function(b){
+        b.onclick = function(){
+          var i = Number(b.getAttribute("data-i"));
+          var ids = String(r.value || "").split(";").filter(Boolean);
+          var labs = String(r.valueLabel || "").split(", ").filter(Boolean);
+          ids.splice(i, 1); labs.splice(i, 1);
+          r.value = ids.join(";");
+          r.valueLabel = labs.join(", ");
+          markDirty(); paintRules();
+        };
+      });
+    }
+    var multi = row.querySelectorAll('[data-f="multi"]');
+    Array.prototype.forEach.call(multi, function(c){
+      c.onchange = function(){
+        var vals = [], labels = [];
+        Array.prototype.forEach.call(multi, function(x){
+          if (x.checked){ vals.push(x.value); labels.push(x.parentNode.textContent.trim()); }
+        });
+        r.value = vals.join(";");
+        r.valueLabel = labels.join(", ");
+        markDirty();
+        document.getElementById("rulePlain").innerHTML = rulesSentence();
+      };
+    });
+  });
+}
+
+function testRules(){
+  var box = document.getElementById("ruleTest");
+  var btn = document.getElementById("btnTestRules");
+  var payload = S.rules.filter(function(r){ return r.attribute; }).map(function(r){
+    return { attribute: r.attribute, attributeLabel: r.attributeLabel, operator: r.operator,
+             value: r.value, valueLabel: r.valueLabel, group: r.group };
+  });
+  btn.disabled = true; btn.textContent = "Testing\u2026";
+  box.classList.remove("hide");
+  box.innerHTML = '<span class="spin"></span> Checking your cases\u2026';
+
+  execAction(P + "TestMatchRules", { Rules: JSON.stringify(payload) })
+    .then(function(res){
+      var r = JSON.parse(res.Result);
+      document.getElementById("ruleFetch").textContent = r.fetchXml;
+      box.innerHTML = '<div class="n">' + r.matchCount + (r.capped ? "+" : "") + "</div>"
+        + '<div style="color:var(--muted);font-size:12px;margin-bottom:2px">existing case'
+        + (r.matchCount === 1 ? "" : "s") + " would have matched these conditions"
+        + (r.capped ? " (search capped at 200)" : "") + "</div>"
+        + (r.unsupported.length
+            ? '<div class="tag w" style="margin-top:8px">Skipped in preview: '
+              + esc(r.unsupported.join(", ")) + "</div>" : "")
+        + (r.samples.length
+            ? "<table>" + r.samples.map(function(s){
+                return "<tr><td>" + esc(s.title) + "</td><td>" + esc(s.number)
+                  + "</td><td>" + esc(s.createdOn) + "</td></tr>"; }).join("") + "</table>"
+            : '<div style="color:var(--muted);font-size:12px;margin-top:8px">'
+              + "No sample cases to show.</div>");
+    })
+    .catch(function(e){
+      box.innerHTML = '<div style="color:var(--red);font-size:12px">Test failed: '
+        + esc(e.message) + "</div>";
+    })
+    .then(function(){ btn.disabled = false; btn.textContent = "Test against real cases"; });
+}
+
+/* ---------------- document package editor ---------------- */
+function refreshPkgSummary(){
+  var el = document.getElementById("pkgSummary");
+  if (!el) return;
+  if (!S.pkg || !S.pkg.name){
+    el.innerHTML = "<em>No document package attached.</em>";
+    return;
+  }
+  var req = S.pkg.items.filter(function(i){ return i.mandatory; }).length;
+  el.innerHTML = "<b>" + esc(S.pkg.name) + "</b><br /><em>" + S.pkg.items.length + " document"
+    + (S.pkg.items.length === 1 ? "" : "s") + ", " + req + " required</em>";
+}
+
+function openDocs(){
+  if (!S.pkg) S.pkg = { id: "", name: "", description: "", active: true, items: [] };
+  document.getElementById("dpName").value = S.pkg.name;
+  document.getElementById("dpDesc").value = S.pkg.description;
+  document.getElementById("dpPick").innerHTML = opt("", "\u2014 build a new one \u2014", true)
+    + (S.catalog.documentPackages || []).map(function(p){ return opt(p.id, p.name); }).join("");
+  paintDocItems();
+  showModal("mDocs");
+}
+
+function paintDocItems(){
+  var body = document.getElementById("dpItems");
+  if (!S.pkg.items.length){
+    body.innerHTML = '<tr><td colspan="6" style="color:var(--muted);font-size:12px;padding:10px 6px">'
+      + "No documents yet. Add the first one below.</td></tr>";
+    return;
+  }
+  body.innerHTML = S.pkg.items.map(function(i){
+    return '<tr class="item" data-iid="' + esc(i.id) + '">'
+      + '<td><input data-f="name" value="' + esc(i.name) + '" placeholder="Document name" /></td>'
+      + "<td>" + selectBox("", RESPONSIBLE, i.responsible).replace("<select", '<select data-f="resp"')
+      + "</td>"
+      + '<td><input data-f="due" type="number" step="1" value="'
+      + (i.dueHours == null ? "" : i.dueHours) + '" /></td>'
+      + '<td class="ctr"><input data-f="mand" type="checkbox"' + (i.mandatory ? " checked" : "")
+      + ' /></td>'
+      + '<td><input data-f="url" value="' + esc(i.templateUrl) + '" placeholder="https://…" /></td>'
+      + '<td><button class="iconbtn" data-f="del" title="Remove">&times;</button></td></tr>';
+  }).join("");
+
+  Array.prototype.forEach.call(body.querySelectorAll("tr.item"), function(row){
+    var id = row.getAttribute("data-iid");
+    var it = null;
+    S.pkg.items.forEach(function(x){ if (x.id === id) it = x; });
+    if (!it) return;
+    function b(sel, fn, ev){
+      var el = row.querySelector('[data-f="' + sel + '"]');
+      if (el) el[ev || "oninput"] = function(e){ fn(e.target); markDirty(); };
+    }
+    b("name", function(t){ it.name = t.value; });
+    b("resp", function(t){ it.responsible = Number(t.value); }, "onchange");
+    b("due", function(t){ it.dueHours = t.value === "" ? null : Number(t.value); });
+    b("mand", function(t){ it.mandatory = t.checked; }, "onchange");
+    b("url", function(t){ it.templateUrl = t.value; });
+    row.querySelector('[data-f="del"]').onclick = function(){
+      S.pkg.items = S.pkg.items.filter(function(x){ return x.id !== id; });
+      markDirty(); paintDocItems();
+    };
+  });
+}
+
+/** Pulling in an existing package copies it by reference so edits update the shared record. */
+function adoptPackage(pkgId){
+  if (!pkgId){
+    S.pkg = { id: "", name: "", description: "", active: true, items: [] };
+    document.getElementById("dpName").value = "";
+    document.getElementById("dpDesc").value = "";
+    paintDocItems();
+    return;
+  }
+  var body = document.getElementById("dpItems");
+  body.innerHTML = '<tr><td colspan="6"><span class="spin"></span> Loading package\u2026</td></tr>';
+  var url = apiRoot() + P + "documentitems?$select=" + P + "name," + P + "description," + P
+    + "sequence," + P + "mandatory," + P + "responsible," + P + "duehours," + P + "templateurl"
+    + "&$filter=_" + P + "package_value eq " + pkgId + " and statecode eq 0"
+    + "&$orderby=" + P + "sequence";
+  var meta = null;
+  (S.catalog.documentPackages || []).forEach(function(p){ if (p.id === pkgId) meta = p; });
+
+  fetch(url, { credentials: "same-origin",
+      headers: { "Accept": "application/json", "OData-MaxVersion": "4.0", "OData-Version": "4.0" } })
+    .then(function(r){ if (!r.ok) throw new Error("load failed"); return r.json(); })
+    .then(function(d){
+      S.pkg = {
+        id: pkgId, name: meta ? meta.name : "", description: "", active: true,
+        items: (d.value || []).map(function(x){
+          return { id: x[P + "documentitemid"] || uid(), name: x[P + "name"] || "",
+            description: x[P + "description"] || "", sequence: x[P + "sequence"] || 0,
+            mandatory: x[P + "mandatory"] !== false, responsible: x[P + "responsible"] || 1,
+            dueHours: x[P + "duehours"] == null ? null : x[P + "duehours"],
+            templateUrl: x[P + "templateurl"] || "" };
+        })
+      };
+      document.getElementById("dpName").value = S.pkg.name;
+      document.getElementById("dpDesc").value = S.pkg.description;
+      paintDocItems();
+      markDirty();
+    })
+    .catch(function(e){ toast("Could not load that package: " + e.message, true); paintDocItems(); });
+}
+
+/* ---------------- wire the new surfaces ---------------- */
+on("btnOpen", "onclick", function(){ openGallery(); });
+on("openSearch", "oninput", function(e){ paintGallery(e.target.value); });
+on("btnRules", "onclick", function(){ openRules(); });
+on("btnAddGroup", "onclick", function(){ addRule(nextGroup()); markDirty(); paintRules(); });
+on("btnTestRules", "onclick", function(){ testRules(); });
+on("btnRulesDone", "onclick", function(){
+  S.rules = S.rules.filter(function(r){
+    if (!r.attribute) return false;
+    if (r.operator === 9 || r.operator === 10) return true;
+    return String(r.value).length > 0;
+  });
+  S.rules.forEach(function(r, i){ r.sequence = i + 1; });
+  refreshRuleSummary(); markDirty(); hideModal("mRules");
+});
+on("btnDocs", "onclick", function(){ openDocs(); });
+on("btnAddDoc", "onclick", function(){
+  S.pkg.items.push({ id: uid(), name: "", description: "", sequence: S.pkg.items.length + 1,
+    mandatory: true, responsible: 1, dueHours: 24, templateUrl: "" });
+  markDirty(); paintDocItems();
+});
+on("dpName", "oninput", function(e){ S.pkg.name = e.target.value; markDirty(); });
+on("dpDesc", "oninput", function(e){ S.pkg.description = e.target.value; markDirty(); });
+on("dpPick", "onchange", function(e){ adoptPackage(e.target.value); });
+on("btnDropPkg", "onclick", function(){
+  S.pkg = null; S.header.documentPackage = null;
+  refreshPkgSummary(); markDirty(); hideModal("mDocs");
+});
+on("btnDocsDone", "onclick", function(){
+  if (S.pkg && !S.pkg.name.trim()){ toast("Give the package a name first.", true); return; }
+  if (S.pkg) S.pkg.items = S.pkg.items.filter(function(i){ return i.name.trim(); });
+  if (S.pkg) S.pkg.items.forEach(function(i, x){ i.sequence = x + 1; });
+  refreshPkgSummary(); markDirty(); hideModal("mDocs");
+});
+
+/* ---------------- save ---------------- */
+function validate(){
+  var errs = [];
+  if (!S.header.name || !S.header.name.trim()) errs.push("The process needs a name.");
+  if (S.nodes.length && !S.nodes.some(function(n){ return n.isStart; }))
+    errs.push("Mark one task as the entry point.");
+  if (S.edges.some(function(e){ return !e.label || !e.label.trim(); }))
+    errs.push("Every outcome needs a button label.");
+  return errs;
+}
+
+function save(publishStatus){
+  var errs = validate();
+  if (errs.length){ toast(errs[0], true); return; }
+  if (publishStatus != null) S.header.publishStatus = publishStatus;
+  S.nodes.forEach(function(n, i){ if (!n.sequence) n.sequence = i + 1; });
+
+  var head = {};
+  Object.keys(S.header).forEach(function(k){ head[k] = S.header[k]; });
+  head.id = S.templateId || "";
+
+  var payload = {
+    template: head,
+    nodes: S.nodes.map(function(n){
+      return {
+        id: n.id, name: n.name, instructions: n.instructions, stageName: n.stageName,
+        sequence: n.sequence, assignType: n.assignType,
+        team: n.team, user: n.user, queue: n.queue, fallbackTeam: n.fallbackTeam,
+        roleName: n.roleName, dueHours: n.dueHours, slaTargetHours: n.slaTargetHours,
+        slaWarnPercent: n.slaWarnPercent, slaStartWhen: n.slaStartWhen, onBreach: n.onBreach,
+        blocksStage: n.blocksStage, mandatory: n.mandatory, isStart: n.isStart,
+        x: Math.round(n.x), y: Math.round(n.y)
+      };
+    }),
+    outcomes: S.edges.map(function(e){
+      return {
+        id: isNew(e.id) ? "" : e.id, label: e.label, guidance: e.guidance,
+        from: e.from, to: e.to, sentiment: e.sentiment, sequence: e.sequence,
+        advanceStage: e.advanceStage, targetStageName: e.targetStageName,
+        closeCase: e.closeCase, requireComment: e.requireComment, isDefault: e.isDefault,
+        setCasePriority: e.setCasePriority
+      };
+    }),
+    matchRules: S.rules.map(function(r, i){
+      return {
+        id: isNew(r.id) ? "" : r.id, attribute: r.attribute, attributeLabel: r.attributeLabel,
+        operator: r.operator, value: r.value, valueLabel: r.valueLabel,
+        group: r.group, sequence: i + 1
+      };
+    }),
+    package: (S.pkg && S.pkg.name.trim()) ? {
+      id: isNew(S.pkg.id) ? "" : S.pkg.id, name: S.pkg.name,
+      description: S.pkg.description, active: S.pkg.active,
+      items: S.pkg.items.map(function(i, x){
+        return { id: isNew(i.id) ? "" : i.id, name: i.name, description: i.description,
+          sequence: x + 1, mandatory: i.mandatory, responsible: i.responsible,
+          dueHours: i.dueHours, templateUrl: i.templateUrl };
+      })
+    } : null
+  };
+
+  var btn = document.getElementById("btnSave");
+  btn.disabled = true; btn.textContent = "Saving\u2026";
+
+  execAction(P + "SaveProcessGraph", { Graph: JSON.stringify(payload) })
+    .then(function(res){
+      S.templateId = res.TemplateId;
+      S.dirty = false;
+      toast(res.Summary || "Saved");
+      return execAction(P + "GetProcessGraph", { TemplateId: S.templateId });
+    })
+    .then(function(res){
+      var g = JSON.parse(res.Graph);
+      absorbGraph(g);
+      autoPlaceMissing();
+      relayoutIfStacked();
+      fillRail();
+      select(null);
+      return refreshCatalog();
+    })
+    .catch(function(err){ toast("Save failed: " + err.message, true); })
+    .then(function(){ btn.disabled = false; btn.textContent = "Save"; });
+}
+
+document.getElementById("btnSave").onclick = function(){ save(); };
+document.getElementById("btnAdd").onclick = function(){ addNode(); };
+document.getElementById("btnFirst").onclick = function(){ addNode(); };
+document.getElementById("btnAskAi").onclick = function(){ toggleCopilot(true); };
+document.getElementById("btnTidy").onclick = function(){ tidyLayout(); };
+document.getElementById("btnPublish").onclick = function(){
+  save(Number(S.header.publishStatus) === 2 ? 1 : 2);
+};
+document.getElementById("zIn").onclick = function(){ zoomBy(0.15); };
+document.getElementById("zOut").onclick = function(){ zoomBy(-0.15); };
+document.getElementById("zFit").onclick = function(){ fitView(); };
+
+window.addEventListener("beforeunload", function(e){
+  if (S.dirty){ e.preventDefault(); e.returnValue = ""; }
+});
+
+/* ---------------- copilot ---------------- */
+function toggleCopilot(on){
+  var el = document.getElementById("copilot");
+  var open = on == null ? !el.classList.contains("open") : on;
+  el.classList.toggle("open", open);
+  if (open) document.getElementById("cpIn").focus();
+}
+document.getElementById("btnCopilot").onclick = function(){ toggleCopilot(); };
+document.getElementById("cpClose").onclick = function(){ toggleCopilot(false); };
+document.getElementById("cpSendBtn").onclick = function(){ cpSend(); };
+Array.prototype.forEach.call(document.querySelectorAll("#cpFoot .chip"), function(c){
+  c.onclick = function(){ document.getElementById("cpIn").value = c.textContent.trim(); cpSend(); };
+});
+document.getElementById("cpIn").addEventListener("keydown", function(e){
+  if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); cpSend(); }
+});
+
+function cpSay(who, html){
+  var log = document.getElementById("cpLog");
+  var d = document.createElement("div");
+  d.className = "msg " + who;
+  d.innerHTML = html;
+  log.appendChild(d);
+  log.scrollTop = log.scrollHeight;
+  return d;
+}
+
+/** Small markdown subset so the API's preview renders nicely in the pane. */
+function md(t){
+  var lines = String(t).split("\n"), out = "", inTable = false;
+  function inline(s){
+    return esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+                 .replace(/`(.+?)`/g, "<code>$1</code>")
+                 .replace(/_(.+?)_/g, "<i>$1</i>");
+  }
+  lines.forEach(function(l){
+    if (/^\s*\|/.test(l)){
+      var cells = l.trim().replace(/^\||\|$/g, "").split("|").map(function(c){ return c.trim(); });
+      if (cells.every(function(c){ return /^-{2,}$/.test(c); })) return;
+      if (!inTable){ inTable = true; out += "<table>"; }
+      out += "<tr>" + cells.map(function(c){ return "<td>" + inline(c) + "</td>"; }).join("") + "</tr>";
+      return;
+    }
+    if (inTable){ out += "</table>"; inTable = false; }
+    if (/^\s*[-*]\s+/.test(l)){ out += "<div>\u2022 " + inline(l.replace(/^\s*[-*]\s+/, "")) + "</div>"; return; }
+    if (!l.trim()){ out += "<div style='height:6px'></div>"; return; }
+    out += "<div>" + inline(l) + "</div>";
+  });
+  if (inTable) out += "</table>";
+  return out;
+}
+
+function cpSend(){
+  var input = document.getElementById("cpIn");
+  var text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  cpSay("me", esc(text));
+  var thinking = cpSay("ai", '<span class="spin"></span> Drafting\u2026');
+
+  var spec;
+  try { spec = draftFromText(text); }
+  catch(e){ thinking.innerHTML = "I could not read that: " + esc(e.message); return; }
+
+  execAction(P + "AuthorProcess", { ProcessJson: JSON.stringify(spec), Mode: "preview" })
+    .then(function(res){
+      thinking.innerHTML = md(res.Summary)
+        + '<div style="display:flex;gap:6px;margin-top:10px">'
+        + '<button class="btn primary" id="cpApply">Put it on the canvas</button>'
+        + '<button class="btn ghost" id="cpDrop">Discard</button></div>';
+      document.getElementById("cpApply").onclick = function(){
+        applySpec(spec);
+        var b = document.getElementById("cpApply");
+        if (b) b.parentNode.removeChild(b);
+      };
+      document.getElementById("cpDrop").onclick = function(){
+        thinking.parentNode.removeChild(thinking);
+      };
+    })
+    .catch(function(err){
+      thinking.innerHTML = "I could not draft that: " + esc(err.message);
+    });
+}
+
+/** Reads the sentence and produces a template spec the AuthorProcess API can preview. */
+function draftFromText(text){
+  var t = text.toLowerCase();
+  var bpf = S.header.bpfName || (S.catalog.businessProcessFlows[0] || {}).name || "";
+  var stageNames = S.stages.map(function(s){ return s.name; });
+
+  var steps = [];
+  var colon = text.indexOf(":");
+  if (colon > -1 && text.slice(colon + 1).indexOf(",") > -1){
+    steps = text.slice(colon + 1).split(/,| then /i).map(function(s){ return s.trim(); })
+      .filter(function(s){ return s.length > 1; });
+  }
+  if (!steps.length){
+    steps = ["Acknowledge and log", "Verify the customer", "Investigate",
+             "Approve the outcome", "Confirm with the customer"];
+  }
+
+  var teamNames = S.catalog.teams.map(function(x){ return x.name; });
+  var defaultTeam = teamNames.length ? teamNames[0] : "";
+  var perStage = Math.max(1, Math.ceil(steps.length / Math.max(1, stageNames.length)));
+
+  var tasks = steps.map(function(s, i){
+    var isApproval = /approv|sign off|manager|authoris|authoriz/i.test(s);
+    return {
+      subject: s.charAt(0).toUpperCase() + s.slice(1),
+      stage: stageNames.length
+        ? stageNames[Math.min(stageNames.length - 1, Math.floor(i / perStage))] : "",
+      assignTo: isApproval ? "manager of case owner" : "team",
+      team: isApproval ? "" : defaultTeam,
+      dueHours: 24,
+      slaTargetHours: /acknowledg|first|contact|block/i.test(s) ? 1 : 8,
+      slaWarnPercent: 75, blocksStage: true, mandatory: true,
+      instructions: "Drafted by Process Copilot from: " + s
+    };
+  });
+
+  var rules = [];
+  if (/complaint/.test(t))
+    rules.push({ attribute: "cpc_casecategory", operator: "equals", value: "Complaint", group: 1 });
+  if (/fraud|dispute|chargeback/.test(t))
+    rules.push({ attribute: "cpc_casecategory", operator: "equals", value: "Fraud Dispute", group: 1 });
+  if (/kyc|onboard/.test(t))
+    rules.push({ attribute: "cpc_casecategory", operator: "equals", value: "Onboarding / KYC", group: 1 });
+  ["Premier", "Priority", "Retail", "Corporate", "SME"].forEach(function(seg){
+    if (t.indexOf(seg.toLowerCase()) >= 0)
+      rules.push({ attribute: "cpc_customersegment", operator: "equals", value: seg, group: 2 });
+  });
+  if (/high priority|urgent/.test(t))
+    rules.push({ attribute: "prioritycode", operator: "equals", value: "High", group: 3 });
+
+  var name = S.header.name;
+  var m = text.match(/(?:process|journey|flow)\s+(?:for|called|named)\s+([^,.:]+)/i);
+  if (m) name = m[1].trim();
+  else if (/complaint/.test(t)) name = "Complaint handling";
+  else if (/fraud|chargeback/.test(t)) name = "Fraud dispute handling";
+  else if (/kyc|onboard/.test(t)) name = "Customer onboarding";
+
+  return {
+    name: name || "Drafted case process",
+    description: "Drafted by Process Copilot from: " + text,
+    rank: S.header.rank || 50,
+    businessProcessFlow: bpf,
+    startStage: stageNames.length ? stageNames[0] : "",
+    firstResponseHours: /1 hour|one hour/.test(t) ? 1 : (S.header.firstResponseHours || 4),
+    resolutionHours: S.header.resolutionHours || 24,
+    setCasePriority: /high priority|urgent/.test(t) ? "high" : "leave as is",
+    sla: S.header.sla ? S.header.sla.name : "",
+    documentPackage: S.header.documentPackage ? S.header.documentPackage.name : "",
+    rules: rules, tasks: tasks, publish: false
+  };
+}
+
+/** Puts a drafted spec on the canvas as nodes plus a default outcome chain. */
+function applySpec(spec){
+  S.header.name = spec.name;
+  S.header.description = spec.description;
+  if (spec.businessProcessFlow && spec.businessProcessFlow !== S.header.bpfName){
+    S.header.bpfName = spec.businessProcessFlow;
+    var b = null;
+    S.catalog.businessProcessFlows.forEach(function(x){
+      if (x.name === spec.businessProcessFlow) b = x; });
+    S.stages = b ? (b.stages || []) : [];
+  }
+  S.header.startStageName = spec.startStage || S.header.startStageName;
+  S.header.firstResponseHours = spec.firstResponseHours;
+  S.header.resolutionHours = spec.resolutionHours;
+
+  S.nodes = [];
+  S.edges = [];
+  var made = spec.tasks.map(function(t, i){
+    var n = normNode({
+      id: uid(), name: t.subject, instructions: t.instructions, stageName: t.stage,
+      sequence: i + 1,
+      assignType: t.assignTo === "manager of case owner" ? 5 : t.assignTo === "queue" ? 4 : 1,
+      team: t.team || "", dueHours: t.dueHours, slaTargetHours: t.slaTargetHours,
+      slaWarnPercent: t.slaWarnPercent, slaStartWhen: 2, onBreach: 2,
+      blocksStage: t.blocksStage, mandatory: t.mandatory, isStart: i === 0
+    });
+    S.nodes.push(n);
+    return n;
+  });
+
+  made.forEach(function(n, i){
+    var nxt = made[i + 1];
+    S.edges.push({
+      id: uid(), label: nxt ? "Completed" : "Case resolved", guidance: "",
+      from: n.id, to: nxt ? nxt.id : "", sentiment: 1, sequence: i * 2 + 1,
+      advanceStage: !!(nxt && nxt.stageName !== n.stageName), targetStageName: "",
+      closeCase: !nxt, requireComment: false, isDefault: true, setCasePriority: 0
+    });
+    S.edges.push({
+      id: uid(), label: "Cannot proceed", guidance: "Record why this is blocked.",
+      from: n.id, to: "", sentiment: 4, sequence: i * 2 + 2,
+      advanceStage: false, targetStageName: "", closeCase: false,
+      requireComment: true, isDefault: false, setCasePriority: 1
+    });
+  });
+
+  fillRail();
+  autoPlaceMissing();
+  relayoutIfStacked();
+  markDirty();
+  select(null);
+  fitView();
+  toast("Draft placed on the canvas \u2014 review, then Save");
+}
+
+boot();
+</script>
+</body>
+</html>
