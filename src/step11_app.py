@@ -87,11 +87,18 @@ def main():
         "description": "Configure case process blueprints: targeting rules, SLAs, BPF stages, task plans and document packages.",
         "clienttype": 4,
         "webresourceid": ensure_icon(),
-        "navigationtype": 1,
+        # 0 = classic single-session shell. 1 is the multi-session (Customer
+        # Service workspace) shell, whose session/tab rail eats vertical space
+        # we want for the designer canvas.
+        "navigationtype": 0,
     }
     if app:
         app_id = app["appmoduleid"]
-        dv.patch(f"appmodules({app_id})", {"name": APP_NAME, "description": body["description"]}, solution=True)
+        dv.patch(f"appmodules({app_id})", {
+            "name": APP_NAME,
+            "description": body["description"],
+            "navigationtype": 0,
+        }, solution=True)
         print("  ~ app", app_id)
     else:
         app_id = dv.new_id(dv.post("appmodules", body, solution=True))

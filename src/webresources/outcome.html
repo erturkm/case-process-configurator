@@ -60,6 +60,7 @@ button.go:disabled{opacity:.45;cursor:default}
 <script>
 "use strict";
 var P = "cpc_";
+var OTHER = "spc_";
 var SENT = { 1:"#107C41", 2:"#8A8886", 3:"#F4364C", 4:"#605E5C" };
 
 function xrm(){
@@ -106,7 +107,8 @@ function load(){
   var id = taskId();
   if (!id){ root.innerHTML = '<div class="note">Save the task first to record an outcome.</div>'; return; }
   state.id = id;
-  var sel = "$select=subject,statecode," + P + "availableoutcomes," + P + "outcomelabel,"
+  var sel = "$select=subject,statecode," + P + "availableoutcomes,"
+          + OTHER + "availableoutcomes," + P + "outcomelabel,"
           + P + "outcomecomment," + P + "branchpath";
   fetch(apiRoot() + "tasks(" + id + ")?" + sel, {
     credentials: "same-origin",
@@ -134,8 +136,14 @@ function paint(t){
   var list = [];
   try { list = raw ? JSON.parse(raw) : []; } catch(e){}
   if (!list.length){
-    root.innerHTML = '<div class="note">This task is not part of a configured case process, so there '
+    /* The task form is shared with the other configurator. If the task plainly belongs to it,
+       say nothing at all rather than stack two contradictory notices on one form. */
+    var foreign = false;
+    try { foreign = JSON.parse(t[OTHER + "availableoutcomes"] || "[]").length > 0; } catch(e){}
+    root.innerHTML = foreign ? "" :
+      '<div class="note">This task is not part of a configured case process, so there '
       + "are no outcomes to pick. Close it the normal way.</div>";
+    if (foreign) document.body.style.display = "none";
     return;
   }
   state.outcomes = list;

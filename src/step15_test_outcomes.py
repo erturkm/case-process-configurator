@@ -28,7 +28,11 @@ def complete(task_id, outcome_label, comment=None):
     dv.patch(f"tasks({task_id})", body)
 
 
-def make_case(title, category, segment, priority):
+def subject_id(title):
+    return dv.find_one("subjects", f"title eq '{title}'", "subjectid")["subjectid"]
+
+
+def make_case(title, subject, priority):
     c = dv.find_one("contacts", "lastname eq 'Outcome Demo'", "contactid")
     if not c:
         cid = dv.new_id(dv.post("contacts", {"firstname": "Nadia", "lastname": "Outcome Demo",
@@ -38,8 +42,7 @@ def make_case(title, category, segment, priority):
     return dv.new_id(dv.post("incidents", {
         "title": title,
         "customerid_contact@odata.bind": f"/contacts({cid})",
-        f"{P}_casecategory": category,
-        f"{P}_customersegment": segment,
+        "subjectid@odata.bind": f"/subjects({subject_id(subject)})",
         "prioritycode": priority,
     }))
 
@@ -72,7 +75,7 @@ def main():
     print("=" * 78)
     print("SCENARIO A  Premier complaint, bank at fault, manager rejects once")
     print("=" * 78)
-    case = make_case("Premier complaint - mis-sold product", 1, 1, 1)
+    case = make_case("Premier complaint - mis-sold product", "Complaints", 1)
     time.sleep(6)
     show(case, "After create")
 
@@ -163,7 +166,7 @@ def main():
     print("\n" + "=" * 78)
     print("SCENARIO B  Premier complaint, no fault found (skips manager approval)")
     print("=" * 78)
-    case2 = make_case("Premier complaint - statement dispute", 1, 1, 1)
+    case2 = make_case("Premier complaint - statement dispute", "Complaints", 1)
     time.sleep(6)
     o = open_tasks(case2)
     complete(o[0]["activityid"], "Complaint confirmed"); time.sleep(4)
@@ -184,7 +187,7 @@ def main():
     print("\n" + "=" * 78)
     print("SCENARIO C  Complaint that turns out to be a service request (early close)")
     print("=" * 78)
-    case3 = make_case("Premier complaint - address change", 1, 1, 1)
+    case3 = make_case("Premier complaint - address change", "Complaints", 1)
     time.sleep(6)
     o = open_tasks(case3)
     complete(o[0]["activityid"], "Actually a service request", "Customer just wanted an address change.")

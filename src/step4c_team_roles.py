@@ -12,15 +12,15 @@ BU = dv.get("businessunits?$select=businessunitid"
 
 ROLE = "System Administrator"
 
-TEAMS = [
-    # original service teams
-    "Contact Centre Tier 1", "Fraud Operations", "Correspondence",
-    "Complaints Management", "Onboarding Operations", "Field Service Dispatch",
-    # corporate and retail banking teams
-    "Credit Origination", "Credit Risk", "Credit Committee",
-    "Legal and Documentation", "Loan Operations", "Portfolio Monitoring",
-    "Retail Lending Operations",
-]
+def owner_teams():
+    """Every non-default owner team in the org.
+
+    Discovered rather than listed, so teams added by later seeding steps are
+    picked up automatically instead of silently going role-less.
+    """
+    rows = dv.get("teams?$select=teamid,name,isdefault,_businessunitid_value"
+                  "&$filter=teamtype eq 0&$top=200")["value"]
+    return [t for t in rows if not t.get("isdefault")]
 
 
 def main():
@@ -32,12 +32,8 @@ def main():
     role_id = roles[ROLE]
     print("Using role:", ROLE)
 
-    for name in TEAMS:
-        t = dv.find_one("teams", f"name eq '{name}'", "teamid,_businessunitid_value")
-        if not t:
-            print("  ! missing team", name)
-            continue
-
+    for t in owner_teams():
+        name = t["name"]
         # A team can only hold roles from its own business unit, so pull it into the root BU.
         if t.get("_businessunitid_value") != BU:
             dv.patch(f"teams({t['teamid']})",
@@ -55,10 +51,8 @@ def main():
 
     print("\nVerifying")
     bad = []
-    for name in TEAMS:
-        t = dv.find_one("teams", f"name eq '{name}'", "teamid")
-        if not t:
-            continue
+    for t in owner_teams():
+        name = t["name"]
         have = [r["name"] for r in
                 dv.get(f"teams({t['teamid']})/teamroles_association?$select=name")["value"]]
         ok = ROLE in have

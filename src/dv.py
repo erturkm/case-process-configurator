@@ -6,6 +6,7 @@ Set the target environment before running any step, for example:
 
 Authentication uses the Azure CLI, so sign in first with `az login`.
 """
+import datetime
 import json, os, subprocess, time, urllib.parse, urllib.request, urllib.error
 
 ORG = os.environ.get("DATAVERSE_URL", "").rstrip("/")
@@ -17,17 +18,31 @@ if not ORG:
 API = ORG + "/api/data/v9.2"
 PREFIX = os.environ.get("CPC_PREFIX", "cpc")
 SOLUTION = os.environ.get("CPC_SOLUTION", "CaseProcessConfigurator")
-_tok = {"v": None, "t": 0}
+_tok = {"v": None, "exp": 0}
 
 
-def token():
-    if _tok["v"] and time.time() - _tok["t"] < 2400:
+def token(force=False):
+    # az serves tokens from its own cache, so a token it just handed us may only have
+    # minutes of life left. Trust the token's real expiry, not when we asked for it --
+    # a long-running script (a design pass takes ~10 min) otherwise 401s mid-flight.
+    if _tok["v"] and not force and time.time() < _tok["exp"] - 300:
         return _tok["v"]
-    t = subprocess.check_output(
-        ["az", "account", "get-access-token", "--resource", ORG, "--query", "accessToken", "-o", "tsv"],
-        text=True).strip()
-    _tok["v"], _tok["t"] = t, time.time()
-    return t
+    out = json.loads(subprocess.check_output(
+        ["az", "account", "get-access-token", "--resource", ORG, "-o", "json"], text=True))
+    _tok["v"] = out["accessToken"]
+    exp = out.get("expires_on") or out.get("expiresOn")
+    try:
+        _tok["exp"] = float(exp)
+    except (TypeError, ValueError):
+        # Older az emits a local-time string instead of an epoch.
+        try:
+            _tok["exp"] = datetime.datetime.fromisoformat(str(exp)).timestamp()
+        except Exception:
+            _tok["exp"] = time.time() + 900
+    if force:
+        # A forced refresh that returns the same expired token would loop for ever.
+        _tok["exp"] = max(_tok["exp"], time.time() + 60)
+    return _tok["v"]
 
 
 def call(method, path, body=None, headers=None, solution=False):
@@ -43,18 +58,25 @@ def call(method, path, body=None, headers=None, solution=False):
     if headers:
         h.update(headers)
     req = urllib.request.Request(url, data=data, headers=h, method=method)
-    try:
-        with urllib.request.urlopen(req, timeout=300) as r:
-            raw = r.read()
-            loc = r.headers.get("OData-EntityId")
-            if not raw:
-                return {"_location": loc}
-            out = json.loads(raw)
-            if loc:
-                out["_location"] = loc
-            return out
-    except urllib.error.HTTPError as e:
-        raise RuntimeError(f"{method} {url} -> {e.code}\n{e.read().decode(errors='ignore')[:1500]}") from None
+    for attempt in range(2):
+        try:
+            with urllib.request.urlopen(req, timeout=300) as r:
+                raw = r.read()
+                loc = r.headers.get("OData-EntityId")
+                if not raw:
+                    return {"_location": loc}
+                out = json.loads(raw)
+                if loc:
+                    out["_location"] = loc
+                return out
+        except urllib.error.HTTPError as e:
+            body = e.read().decode(errors="ignore")
+            if e.code == 401 and attempt == 0:
+                # The token died in flight. Get a fresh one and replay once.
+                h["Authorization"] = "Bearer " + token(force=True)
+                req = urllib.request.Request(url, data=data, headers=h, method=method)
+                continue
+            raise RuntimeError(f"{method} {url} -> {e.code}\n{body[:1500]}") from None
 
 
 def get(path):

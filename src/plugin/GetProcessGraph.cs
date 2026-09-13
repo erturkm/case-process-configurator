@@ -99,6 +99,17 @@ namespace Cpc.Plugins
                 NumField(sb, "x", n.GetAttributeValue<int?>(P + "posx"));
                 NumField(sb, "y", n.GetAttributeValue<int?>(P + "posy"));
                 Field(sb, "color", n.GetAttributeValue<string>(P + "nodecolor"));
+                // AI agent configuration
+                RefField(sb, "agent", n.GetAttributeValue<EntityReference>(P + "agent"));
+                Field(sb, "agentPrompt", n.GetAttributeValue<string>(P + "agentprompt"));
+                Field(sb, "contextScope", MultiCsv(n.GetAttributeValue<OptionSetValueCollection>(P + "contextscope")));
+                var ot = n.GetAttributeValue<OptionSetValue>(P + "outputtarget");
+                NumField(sb, "outputTarget", ot == null ? 2 : ot.Value);
+                var om = n.GetAttributeValue<OptionSetValue>(P + "agentoutcomemode");
+                NumField(sb, "agentOutcomeMode", om == null ? 1 : om.Value);
+                BoolField(sb, "autoComplete", n.GetAttributeValue<bool>(P + "autocomplete"));
+                NumField(sb, "confidenceThreshold", n.GetAttributeValue<int?>(P + "confidencethreshold"));
+                NumField(sb, "agentTimeoutMins", n.GetAttributeValue<int?>(P + "agenttimeoutmins"));
                 sb.Append("}");
             }
             sb.Append("]");
@@ -249,6 +260,16 @@ namespace Cpc.Plugins
             if (r == null) { sb.Append("null"); return; }
             sb.Append("{").Append(Json.Q("id")).Append(":").Append(Json.Q(r.Id.ToString()))
               .Append(",").Append(Json.Q("name")).Append(":").Append(Json.Q(r.Name ?? "")).Append("}");
+        }
+
+        /// <summary>Multiselect choices travel as a plain csv of option values, which keeps the
+        /// designer, the flow and the context builder speaking the same simple format.</summary>
+        internal static string MultiCsv(OptionSetValueCollection c)
+        {
+            if (c == null || c.Count == 0) return "";
+            var parts = new List<string>();
+            foreach (var o in c) parts.Add(o.Value.ToString());
+            return string.Join(",", parts.ToArray());
         }
     }
 }

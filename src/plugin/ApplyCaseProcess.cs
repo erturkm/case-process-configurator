@@ -48,7 +48,7 @@ namespace Cpc.Plugins
                 {
                     var rules = LoadRules(svc, t.Id);
                     string why;
-                    var ok = Evaluate(incident, rules, out why);
+                    var ok = Evaluate(svc, incident, rules, out why);
                     log.AppendLine(string.Format(CultureInfo.InvariantCulture,
                         "  rank {0,-4} {1,-40} => {2}  {3}",
                         t.GetAttributeValue<int>(P + "rank"),
@@ -151,7 +151,8 @@ namespace Cpc.Plugins
         // ------------------------------------------------------------------ rule evaluation
 
         /// <summary>Conditions in the same group are ORed. Groups are ANDed.</summary>
-        private static bool Evaluate(Entity incident, List<Entity> rules, out string why)
+        internal static bool Evaluate(IOrganizationService svc, Entity incident, List<Entity> rules,
+                                      out string why)
         {
             why = string.Empty;
             if (rules.Count == 0) { why = "(no rules)"; return false; }
@@ -162,7 +163,7 @@ namespace Cpc.Plugins
                 var any = false;
                 foreach (var r in g)
                 {
-                    if (Matches(incident, r)) { any = true; break; }
+                    if (Matches(svc, incident, r)) { any = true; break; }
                 }
                 if (!any)
                 {
@@ -173,16 +174,26 @@ namespace Cpc.Plugins
             return true;
         }
 
-        private static bool Matches(Entity incident, Entity rule)
+        private static bool Matches(IOrganizationService svc, Entity incident, Entity rule)
         {
             var attr = rule.GetAttributeValue<string>(P + "attributename");
             var op = rule.GetAttributeValue<OptionSetValue>(P + "operator");
             var raw = rule.GetAttributeValue<string>(P + "value") ?? string.Empty;
             if (string.IsNullOrEmpty(attr) || op == null) return false;
 
-            var actual = ValueOf(incident, attr);
             var values = raw.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
                             .Select(v => v.Trim()).ToList();
+
+            // "is under" / "is not under" walk a hierarchical lookup, so they need the reference
+            // itself rather than the flattened string the other operators compare.
+            if (op.Value == 11 || op.Value == 12)
+            {
+                var self = RefOf(svc, incident, attr);
+                var under = self != null && values.Any(v => IsUnder(svc, self, v));
+                return op.Value == 11 ? under : !under;
+            }
+
+            var actual = ValueOf(svc, incident, attr);
 
             switch (op.Value)
             {
@@ -202,6 +213,86 @@ namespace Cpc.Plugins
             }
         }
 
+        // ------------------------------------------------------------------ hierarchy
+
+        private const int MaxHierarchyDepth = 12;
+
+        /// <summary>
+        /// True when <paramref name="node"/> is the ancestor record itself or sits anywhere beneath it.
+        /// Walking up from the case's own value is far cheaper than expanding the ancestor's subtree,
+        /// because a subject tree is only a few levels deep but can be very wide.
+        /// </summary>
+        private static bool IsUnder(IOrganizationService svc, EntityReference node, string ancestorId)
+        {
+            Guid target;
+            if (!Guid.TryParse((ancestorId ?? string.Empty).Trim(), out target)) return false;
+
+            var parentAttr = ParentAttributeOf(svc, node.LogicalName);
+            if (string.IsNullOrEmpty(parentAttr)) return node.Id == target;
+
+            var seen = new HashSet<Guid>();
+            var current = node.Id;
+            for (var i = 0; i < MaxHierarchyDepth; i++)
+            {
+                if (current == target) return true;
+                if (!seen.Add(current)) return false;      // defensive: cycles in the tree
+                Entity row;
+                try { row = svc.Retrieve(node.LogicalName, current, new ColumnSet(parentAttr)); }
+                catch { return false; }
+                var parent = row.GetAttributeValue<EntityReference>(parentAttr);
+                if (parent == null) return false;
+                current = parent.Id;
+            }
+            return false;
+        }
+
+        private static readonly Dictionary<string, string> ParentAttrCache =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "subject", "parentsubject" },
+                { "account", "parentaccountid" },
+                { "incident", "parentcaseid" },
+                { "product", "parentproductid" },
+                { "territory", "parentterritoryid" },
+                { "businessunit", "parentbusinessunitid" },
+                { "position", "parentpositionid" },
+            };
+
+        /// <summary>Self referential parent lookup for a hierarchical table, discovered once per entity.</summary>
+        private static string ParentAttributeOf(IOrganizationService svc, string entity)
+        {
+            lock (ParentAttrCache)
+            {
+                string known;
+                if (ParentAttrCache.TryGetValue(entity, out known)) return known;
+            }
+
+            string found = null;
+            try
+            {
+                var req = new Microsoft.Xrm.Sdk.Messages.RetrieveEntityRequest
+                {
+                    LogicalName = entity,
+                    EntityFilters = Microsoft.Xrm.Sdk.Metadata.EntityFilters.Attributes,
+                    RetrieveAsIfPublished = true
+                };
+                var resp = (Microsoft.Xrm.Sdk.Messages.RetrieveEntityResponse)svc.Execute(req);
+                foreach (var a in resp.EntityMetadata.Attributes)
+                {
+                    var lk = a as Microsoft.Xrm.Sdk.Metadata.LookupAttributeMetadata;
+                    if (lk == null || lk.Targets == null || lk.Targets.Length != 1) continue;
+                    if (!string.Equals(lk.Targets[0], entity, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (lk.AttributeOf != null) continue;
+                    found = lk.LogicalName;
+                    break;
+                }
+            }
+            catch { /* fall through and cache the miss so we only pay for this once */ }
+
+            lock (ParentAttrCache) { ParentAttrCache[entity] = found; }
+            return found;
+        }
+
         private static bool Eq(string a, string b)
         {
             return string.Equals(a ?? string.Empty, (b ?? string.Empty).Trim(),
@@ -214,8 +305,35 @@ namespace Cpc.Plugins
             return double.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out d) ? d : double.NaN;
         }
 
-        /// <summary>Normalises any case attribute to a comparable string.</summary>
-        private static string ValueOf(Entity e, string attr)
+        /// <summary>
+        /// Normalises a case attribute to a comparable string. Accepts a one hop path such as
+        /// "customerid.cpc_customersegment" so a rule can target the customer behind the case rather
+        /// than a copy of that data denormalised onto the case itself.
+        /// </summary>
+        internal static string ValueOf(IOrganizationService svc, Entity e, string attr)
+        {
+            var dot = (attr ?? string.Empty).IndexOf('.');
+            if (dot > 0)
+            {
+                var hop = attr.Substring(0, dot);
+                var rest = attr.Substring(dot + 1);
+                var related = Hop(svc, e, hop, rest);
+                return related == null ? null : Flatten(related, rest);
+            }
+            return Flatten(e, attr);
+        }
+
+        /// <summary>Resolves the record on the far side of a lookup, loading only the column asked for.</summary>
+        private static Entity Hop(IOrganizationService svc, Entity e, string lookup, string column)
+        {
+            if (!e.Contains(lookup)) return null;
+            var er = e[lookup] as EntityReference;
+            if (er == null) return null;
+            try { return svc.Retrieve(er.LogicalName, er.Id, new ColumnSet(column)); }
+            catch { return null; }   // column not present on this side of a polymorphic lookup
+        }
+
+        private static string Flatten(Entity e, string attr)
         {
             if (!e.Contains(attr)) return null;
             var v = e[attr];
@@ -226,6 +344,17 @@ namespace Cpc.Plugins
             if (v is bool) return ((bool)v) ? "1" : "0";
             if (v is DateTime) return ((DateTime)v).ToString("o", CultureInfo.InvariantCulture);
             return Convert.ToString(v, CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>The raw reference behind an attribute path, needed by the hierarchy operators.</summary>
+        private static EntityReference RefOf(IOrganizationService svc, Entity e, string attr)
+        {
+            var dot = (attr ?? string.Empty).IndexOf('.');
+            if (dot <= 0) return e.Contains(attr) ? e[attr] as EntityReference : null;
+            var related = Hop(svc, e, attr.Substring(0, dot), attr.Substring(dot + 1));
+            if (related == null) return null;
+            var rest = attr.Substring(dot + 1);
+            return related.Contains(rest) ? related[rest] as EntityReference : null;
         }
 
         // ------------------------------------------------------------------ apply

@@ -17,6 +17,17 @@ namespace Cpc.Plugins
     {
         public const string P = "cpc_";
 
+        // cpc_assigntype option 7, added in step41_agent_model.py
+        public const int AssignTypeAiAgent = 7;
+
+        // cpc_agentstate option values on the generated task
+        public const int AgentStateQueued = 1;
+        public const int AgentStateRunning = 2;
+        public const int AgentStateSucceeded = 3;
+        public const int AgentStateReview = 4;
+        public const int AgentStateFailed = 5;
+        public const int AgentStateSkipped = 6;
+
         // ------------------------------------------------------------------ loading
 
         public static List<Entity> LoadTemplateTasks(IOrganizationService svc, Guid templateId)
@@ -120,7 +131,39 @@ namespace Cpc.Plugins
             var outcomes = LoadOutcomes(svc, tt.Id);
             task[P + "availableoutcomes"] = Truncate(SerialiseOutcomes(outcomes), 4000);
 
+            // AI-assigned tasks are parked as Queued. A cloud flow picks them up, calls the
+            // agent and completes them through cpc_CompleteAgentTask. Ownership already fell
+            // through to the fallback team in ResolveOwner, so a human can always take over.
+            var assign = tt.GetAttributeValue<OptionSetValue>(P + "assigntype");
+            var isAgentTask = assign != null && assign.Value == AssignTypeAiAgent
+                              && tt.GetAttributeValue<EntityReference>(P + "agent") != null;
+            if (isAgentTask) task[P + "agentattempts"] = 0;
+
             var id = svc.Create(task);
+
+            // The task form renders its countdown through the same Modern SLA Timer control the
+            // case form uses, and that control reads slakpiinstance rows - not our own columns.
+            // Mirroring the deadline into a real KPI instance is what makes the clock tick.
+            if (task.Contains(P + "sladue"))
+                CreateSlaTimer(svc, id, (DateTime)task[P + "sladue"],
+                               task.Contains(P + "slawarn") ? (DateTime?)task[P + "slawarn"] : null);
+
+            // Deliberately a second call rather than values on the Create. The cloud flow's
+            // trigger is registered on cpc_agentqueuedon as its only filtering attribute, and
+            // filtering attributes bind the Update message alone - a task born Queued would
+            // never be delivered. Writing the request stamp here turns the hand-off into an
+            // update the trigger can see, without the flow waking on every task in the org.
+            //
+            // The stamp is written by whoever wants a turn and never by the flow itself, so the
+            // flow's own state writes (Running, Succeeded, Awaiting review) cannot re-trigger it.
+            if (isAgentTask)
+            {
+                svc.Update(new Entity("task", id)
+                {
+                    [P + "agentstate"] = new OptionSetValue(AgentStateQueued),
+                    [P + "agentqueuedon"] = DateTime.UtcNow,
+                });
+            }
 
             var queue = tt.GetAttributeValue<EntityReference>(P + "queue");
             if (queue != null)
@@ -131,6 +174,61 @@ namespace Cpc.Plugins
                 svc.Create(qi);
             }
             return id;
+        }
+
+        /// <summary>
+        /// Mirrors a task deadline into a real SLA KPI Instance so the Modern SLA Timer control
+        /// on the task form has something to count down.
+        ///
+        /// applicablefromvalue is computed by the platform and rejects a value on create; the
+        /// control falls back to createdon, which is the moment the task was generated and so is
+        /// the correct start of the countdown anyway.
+        /// </summary>
+        public static void CreateSlaTimer(IOrganizationService svc, Guid taskId,
+                                          DateTime failureTime, DateTime? warningTime)
+        {
+            try
+            {
+                var kpi = new Entity("slakpiinstance");
+                kpi["name"] = "Task SLA";
+                kpi["regarding"] = new EntityReference("task", taskId);
+                kpi["failuretime"] = failureTime;
+                if (warningTime.HasValue) kpi["warningtime"] = warningTime.Value;
+                kpi["status"] = new OptionSetValue(0);
+                svc.Create(kpi);
+            }
+            catch
+            {
+                // A missing countdown must never stop a process from running.
+            }
+        }
+
+        /// <summary>Stops the countdown on a task's KPI instance, marking it met or breached.</summary>
+        public static void CloseSlaTimer(IOrganizationService svc, Guid taskId, DateTime closedOn)
+        {
+            try
+            {
+                var q = new QueryExpression("slakpiinstance")
+                {
+                    ColumnSet = new ColumnSet("slakpiinstanceid", "failuretime", "status"),
+                    TopCount = 5,
+                };
+                q.Criteria.AddCondition("regarding", ConditionOperator.Equal, taskId);
+                foreach (var kpi in svc.RetrieveMultiple(q).Entities)
+                {
+                    var fail = kpi.GetAttributeValue<DateTime?>("failuretime");
+                    var breached = fail.HasValue && closedOn > fail.Value;
+                    svc.Update(new Entity("slakpiinstance", kpi.Id)
+                    {
+                        ["status"] = new OptionSetValue(breached ? 1 : 4),
+                        ["succeededon"] = closedOn,
+                        ["terminalstatereached"] = true,
+                    });
+                }
+            }
+            catch
+            {
+            }
         }
 
         /// <summary>Compact JSON the outcome picker renders as buttons without another round trip.</summary>
@@ -213,6 +311,21 @@ namespace Cpc.Plugins
                 case 6:
                     {
                         label = "Case owner";
+                        return incident.GetAttributeValue<EntityReference>("ownerid");
+                    }
+                case AssignTypeAiAgent:
+                    {
+                        // The agent has no Dataverse identity of its own, so a human owner is
+                        // still required: the fallback team holds the task while the agent works
+                        // and keeps it if the agent fails or defers to review.
+                        var agent = tt.GetAttributeValue<EntityReference>(P + "agent");
+                        label = "AI Agent: " + (agent == null ? "unspecified" : agent.Name);
+                        var team = tt.GetAttributeValue<EntityReference>(P + "fallbackteam");
+                        if (team != null)
+                        {
+                            label += " (held by " + team.Name + ")";
+                            return new EntityReference("team", team.Id);
+                        }
                         return incident.GetAttributeValue<EntityReference>("ownerid");
                     }
             }

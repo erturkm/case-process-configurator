@@ -34,6 +34,11 @@ namespace Cpc.Plugins
             var state = task.GetAttributeValue<OptionSetValue>("statecode");
             if (state == null || state.Value != 1) return;
 
+            // The countdown stops the moment the task is done, whoever closed it - a human in the
+            // form or the agent through cpc_CompleteAgentTask. Doing it here rather than in each
+            // caller keeps a single place responsible for it.
+            ProcessRuntime.CloseSlaTimer(svc, ctx.PrimaryEntityId, DateTime.UtcNow);
+
             var sourceTask = task.GetAttributeValue<EntityReference>(P + "sourcetask");
             var sourceTemplate = task.GetAttributeValue<EntityReference>(P + "sourcetemplate");
             var regarding = task.GetAttributeValue<EntityReference>("regardingobjectid");

@@ -30,13 +30,47 @@ namespace Cpc.Plugins
             { "greater than", 7 }, { "gt", 7 },
             { "less than", 8 }, { "lt", 8 },
             { "is empty", 9 }, { "empty", 9 },
-            { "is not empty", 10 }, { "not empty", 10 }
+            { "is not empty", 10 }, { "not empty", 10 },
+            { "is at or under", 11 }, { "at or under", 11 }, { "is under", 11 }, { "under", 11 },
+            { "is not under", 12 }, { "not under", 12 }
         };
 
         private static readonly Dictionary<string, int> AssignTypes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
         {
             { "team", 1 }, { "user", 2 }, { "security role", 3 }, { "role", 3 }, { "queue", 4 },
-            { "manager of case owner", 5 }, { "manager", 5 }, { "case owner", 6 }, { "owner", 6 }
+            { "manager of case owner", 5 }, { "manager", 5 }, { "case owner", 6 }, { "owner", 6 },
+            { "ai agent", 7 }, { "agent", 7 }, { "ai", 7 }
+        };
+
+        /// <summary>Context scope labels the designer shows, mapped to the stored option values.</summary>
+        private static readonly Dictionary<string, int> ContextScopes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "case fields", 1 }, { "case core fields", 1 },
+            { "case description", 2 },
+            { "customer profile", 3 }, { "customer details", 3 }, { "customer fields", 3 },
+            { "previous cases for this customer", 4 }, { "customer case history", 4 }, { "related cases", 4 },
+            { "notes on the case", 5 }, { "case notes", 5 }, { "notes", 5 },
+            { "emails on the case", 6 }, { "emails", 6 },
+            { "tasks already done and their outcomes", 7 }, { "process tasks and outcomes", 7 }, { "tasks", 7 },
+            { "required documents", 8 }, { "documents", 8 }, { "attachments", 8 },
+            { "sla status", 9 }, { "sla", 9 }, { "entitlements", 9 }
+        };
+
+        private static readonly Dictionary<string, int> OutcomeModes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "agent proposes, a person selects", 1 }, { "agent proposes, human selects", 1 },
+            { "recommends", 1 }, { "recommend", 1 },
+            { "agent selects the outcome", 2 }, { "agent selects from configured outcomes", 2 },
+            { "decides", 2 }, { "decide", 2 },
+            { "no outcome, output only", 3 }, { "output only", 3 }
+        };
+
+        private static readonly Dictionary<string, int> OutputTargets = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "agent output field only", 1 }, { "agent output field", 1 },
+            { "task description", 2 },
+            { "note on the case", 3 }, { "case note", 3 },
+            { "append to case description", 4 }
         };
 
         private static readonly Dictionary<string, int> SlaStart = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
@@ -241,7 +275,11 @@ namespace Cpc.Plugins
                 }
 
                 var assignedLabel = AssignLabel(atype, assignee);
-                if (atype == 1 && !string.IsNullOrWhiteSpace(assignee))
+                if (atype == ProcessRuntime.AssignTypeAiAgent)
+                {
+                    assignedLabel = SetAgent(svc, e, to, subject, warnings);
+                }
+                else if (atype == 1 && !string.IsNullOrWhiteSpace(assignee))
                 {
                     var id = FindByName(svc, "team", "name", assignee);
                     if (id == Guid.Empty) warnings.Add("Team '" + assignee + "' was not found for task '" + subject + "'.");
@@ -463,15 +501,57 @@ namespace Cpc.Plugins
             foreach (var e in r.Entities) svc.Delete(entity, e.Id);
         }
 
+        /// <summary>
+        /// Resolves attribute metadata, including the one hop dotted paths the match engine
+        /// supports such as "customerid.cpc_customersegment". Returns null when the attribute
+        /// cannot be found so the caller can warn instead of failing the whole design.
+        /// </summary>
         private static AttributeMetadata GetAttr(IOrganizationService svc, string attr)
         {
-            var resp = (RetrieveAttributeResponse)svc.Execute(new RetrieveAttributeRequest
+            if (string.IsNullOrWhiteSpace(attr)) return null;
+
+            var entity = "incident";
+            var name = attr.Trim();
+
+            var dot = name.IndexOf('.');
+            if (dot > 0)
             {
-                EntityLogicalName = "incident",
-                LogicalName = attr,
-                RetrieveAsIfPublished = true
-            });
-            return resp.AttributeMetadata;
+                var hop = name.Substring(0, dot);
+                name = name.Substring(dot + 1);
+
+                var lookup = Retrieve(svc, "incident", hop) as LookupAttributeMetadata;
+                if (lookup == null || lookup.Targets == null || lookup.Targets.Length == 0)
+                    return null;
+
+                // customerid points at both account and contact. The segment column lives on
+                // account in this model, so prefer a target that actually has the attribute.
+                foreach (var target in lookup.Targets)
+                {
+                    var md = Retrieve(svc, target, name);
+                    if (md != null) return md;
+                }
+                return null;
+            }
+
+            return Retrieve(svc, entity, name);
+        }
+
+        private static AttributeMetadata Retrieve(IOrganizationService svc, string entity, string attr)
+        {
+            try
+            {
+                var resp = (RetrieveAttributeResponse)svc.Execute(new RetrieveAttributeRequest
+                {
+                    EntityLogicalName = entity,
+                    LogicalName = attr,
+                    RetrieveAsIfPublished = true
+                });
+                return resp.AttributeMetadata;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private static string AttributeLabel(IOrganizationService svc, string attr)
@@ -480,6 +560,84 @@ namespace Cpc.Plugins
             var md = GetAttr(svc, attr);
             return md != null && md.DisplayName != null && md.DisplayName.UserLocalizedLabel != null
                 ? md.DisplayName.UserLocalizedLabel.Label : attr;
+        }
+
+        /// <summary>
+        /// Applies the AI agent configuration a designed task carries. Mirrors SaveProcessGraph so a
+        /// process authored by the Copilot behaves identically to one drawn by hand.
+        /// </summary>
+        private static string SetAgent(IOrganizationService svc, Entity e,
+            Dictionary<string, object> to, string subject, List<string> warnings)
+        {
+            var agentName = Json.Str(to, "agentName") ?? Json.Str(to, "agent");
+            var label = "AI agent";
+
+            if (string.IsNullOrWhiteSpace(agentName))
+            {
+                warnings.Add("Task '" + subject + "' is assigned to an AI agent but names no agent.");
+            }
+            else
+            {
+                var id = FindByName(svc, "bot", "name", agentName);
+                if (id == Guid.Empty)
+                    warnings.Add("Agent '" + agentName + "' was not found for task '" + subject + "'.");
+                else
+                {
+                    e[P + "agent"] = new EntityReference("bot", id);
+                    label = "AI agent: " + agentName;
+                }
+            }
+
+            var prompt = Json.Str(to, "agentPrompt", "");
+            if (string.IsNullOrWhiteSpace(prompt))
+                warnings.Add("Task '" + subject + "' has no agent prompt, so the agent gets no instruction.");
+            e[P + "agentprompt"] = prompt;
+
+            var mode = MapEnum(OutcomeModes, Json.Str(to, "agentOutcomeMode", "agent selects the outcome"), 2);
+            var auto = Json.Bool(to, "autoComplete") ?? true;
+            if (auto && mode == 1)
+            {
+                // Auto complete is inert when a person still has to pick the outcome. Say so
+                // rather than silently producing a task that looks automated but always waits.
+                warnings.Add("Task '" + subject + "' has auto complete on but a person still "
+                             + "selects the outcome, so it will wait for them. Auto complete was "
+                             + "turned off.");
+                auto = false;
+            }
+            e[P + "agentoutcomemode"] = new OptionSetValue(mode);
+            e[P + "autocomplete"] = auto;
+            e[P + "outputtarget"] = new OptionSetValue(
+                MapEnum(OutputTargets, Json.Str(to, "outputTarget", "task description"), 2));
+
+            var conf = Json.Int(to, "confidenceThreshold") ?? 70;
+            e[P + "confidencethreshold"] = conf < 0 ? 0 : (conf > 100 ? 100 : conf);
+            var timeout = Json.Int(to, "agentTimeoutMins") ?? 5;
+            e[P + "agenttimeoutmins"] = timeout < 1 ? 1 : (timeout > 120 ? 120 : timeout);
+
+            var scope = new OptionSetValueCollection();
+            var seen = new HashSet<int>();
+            foreach (var c in Json.Arr(Json.Get(to, "agentContext")))
+            {
+                var s = c as string;
+                if (string.IsNullOrWhiteSpace(s)) continue;
+                int v;
+                if (!ContextScopes.TryGetValue(s.Trim(), out v))
+                {
+                    warnings.Add("Unknown agent context '" + s + "' on task '" + subject + "'.");
+                    continue;
+                }
+                if (seen.Add(v)) scope.Add(new OptionSetValue(v));
+            }
+            if (scope.Count == 0)
+            {
+                // An agent with no context can only guess.
+                scope.Add(new OptionSetValue(1));
+                warnings.Add("Task '" + subject + "' gave the agent no case context, so case fields "
+                             + "were added.");
+            }
+            e[P + "contextscope"] = scope;
+
+            return label;
         }
 
         /// <summary>Turns human option labels into the stored integer values the rule engine compares against.</summary>

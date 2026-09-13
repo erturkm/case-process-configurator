@@ -116,18 +116,52 @@ doughnut slice, an owner bar or a category bar to filter the task and case lists
 |---|---|
 | **Tabbed case panel** | One space-efficient panel on the case form with tabs for case process and required documents, each showing a live count badge, turning red on overdue or outstanding mandatory items. |
 | **Outcome picker** | Record a task outcome from the case, driving the process forward. |
+| **Modern SLA timer** | The supported SLA KPI timer control on the case form, showing the live first-response and resolution countdowns stamped by the engine. |
 | **My work dashboard** | Personal and team workload in one view, with a team picker and a mine/team/everything scope switch. |
 | **Interactive charts** | Task urgency doughnut, workload by owner, and cases by category — all clickable and cross-filtering, with removable filter chips. |
 | **Click-through** | Open any task or case directly from the dashboard. |
 
+### AI agents as process participants
+
+A task in the graph can be owned by an **AI agent** instead of a person or a team. The agent is a
+first-class participant in the same outcome-driven process — it receives the same context, records
+one of the same published outcomes, and advances the same graph.
+
+| Capability | What it gives you |
+|---|---|
+| **Agent-assigned tasks** | Assign any task to an AI agent, configured declaratively alongside human tasks — no separate orchestration layer. |
+| **Scoped context** | Choose exactly what the agent may see: case fields, case narrative, customer profile, other cases for the customer, notes, emails, prior task outcomes, required documents and SLA status. |
+| **Outcome modes** | The agent either selects one of the task's published outcomes, or proposes one for a human to confirm. |
+| **Confidence threshold and autonomy** | Set the confidence required before an agent may complete a task unattended; below it, the task is handed to a person. |
+| **Output targets** | The agent's work is written back as a note on the case, or as the task's resolution. |
+| **Human authority preserved** | Approval, waiver and customer-facing steps stay human by design. The agent prepares; a person decides. |
+
+### Email to case
+
+| Capability | What it gives you |
+|---|---|
+| **Inbound email triage** | An inbound customer email is read, classified and turned into a case with the right category, priority and customer link. |
+| **Automatic process application** | The created case flows straight into the normal matching engine, so a template applies with no manual step. |
+| **Queue and mailbox wiring** | Build scripts configure the queue, mailbox and email-derived columns end to end. |
+
+### Process authoring from a written procedure
+
+| Capability | What it gives you |
+|---|---|
+| **Upload an SOP** | Give the designer Copilot a real standard operating procedure as a Word document and it designs the process from it. |
+| **Grounded in your environment** | The design is generated against what actually exists — your business process flows, teams, SLAs, document packages and AI agents — not invented names. |
+| **Stated assumptions** | Every inference, gap and mapping decision is surfaced explicitly rather than hidden, so a reviewer can see what the model had to assume. |
+| **Preview before commit** | The authored process is validated against the environment and previewed before anything is written. |
+
 ### Technical
 
 - **10 custom Dataverse tables** — templates, match rules, process tasks, task outcomes, document packages, document items, applied processes, case required documents, plus two generated business process flow entities.
-- **6 custom APIs** — `GetCaseView`, `GetProcessGraph`, `SaveProcessGraph`, `GetProcessCatalog`, `TestMatchRules`, `AuthorProcess`.
+- **Custom APIs** — `GetCaseView`, `GetProcessGraph`, `SaveProcessGraph`, `GetProcessCatalog`, `TestMatchRules`, `AuthorProcess`, `DesignProcess`, `BuildCaseContext`, `PrepareAgentTask`, `GetAgentCatalog`, `CompleteAgentTask`.
 - **Sandboxed C# plug-in assembly** — the process engine, running in the supported sandbox isolation mode.
 - **Model-driven app** with configuration, runtime and setup areas.
 - **Web resources** — visual designer, case process widget, required documents widget, tabbed case panel, outcome picker, workload dashboard.
 - **Chart.js bundled as a web resource**, not loaded from a CDN, so the dashboard works in locked-down tenants with restricted script origins.
+- **No secrets in the solution** — the Azure AI Foundry connection is held in Dataverse environment variables whose *values* are deliberately excluded from the exported solution, so no credential can ever travel in a solution zip.
 - **Idempotent Python build scripts** — every step can be re-run safely, so the whole solution can be rebuilt from source against a fresh environment.
 
 ---
@@ -144,7 +178,7 @@ Quick summary:
 ```bash
 # Option A — import the packaged solution (fastest)
 #   Power Platform admin centre -> Solutions -> Import
-#   -> solution/CaseProcessConfigurator_managed.zip
+#   -> solution/CaseProcessConfigurator_1_1_0_0_managed.zip
 #   Then run the post-import steps in INSTALL.md.
 
 # Option B — build from source against your own environment
@@ -175,6 +209,18 @@ INSTALL.md                Installation, verification and uninstall
 DISCLAIMER.md             Full disclaimer — please read before installing
 LICENSE                   MIT
 ```
+
+---
+
+## A sibling accelerator for sales
+
+The same idea applied to the opportunity table is available as a separate, fully isolated
+accelerator: [**Sales Process Configurator**](https://github.com/erturkm/sales-process-configurator).
+Where this one targets cases by subject, that one targets deals by the product lines on the
+opportunity, and applies qualification and close clocks, a sales business process flow, an
+outcome-driven task graph and required deal documents.
+
+The two solutions share no components and can be installed independently or side by side.
 
 ---
 

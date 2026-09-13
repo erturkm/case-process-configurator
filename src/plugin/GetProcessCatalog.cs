@@ -73,20 +73,29 @@ namespace Cpc.Plugins
             AppendNameList(sb, svc, "documentPackages", P + "documentpackage", P + "name",
                 P + "documentpackageid", new ConditionExpression("statecode", ConditionOperator.Equal, 0));
             AppendSecurityRoles(sb, svc);
+            AppendAgents(sb, svc);
             AppendTemplates(sb, svc);
             AppendCaseAttributes(sb, svc);
+            AppendRelatedAttributes(sb, svc);
+            AppendSubjectTree(sb, svc);
 
             sb.Append(",").Append(Json.Q("operators")).Append(":[")
               .Append("{\"value\":1,\"label\":\"is\"},{\"value\":2,\"label\":\"is not\"},")
               .Append("{\"value\":3,\"label\":\"is any of\"},{\"value\":4,\"label\":\"is none of\"},")
               .Append("{\"value\":5,\"label\":\"contains\"},{\"value\":6,\"label\":\"begins with\"},")
               .Append("{\"value\":7,\"label\":\"is greater than\"},{\"value\":8,\"label\":\"is less than\"},")
-              .Append("{\"value\":9,\"label\":\"is empty\"},{\"value\":10,\"label\":\"is not empty\"}]");
+              .Append("{\"value\":9,\"label\":\"is empty\"},{\"value\":10,\"label\":\"is not empty\"},")
+              .Append("{\"value\":11,\"label\":\"is at or under\",\"hierarchical\":true},")
+              .Append("{\"value\":12,\"label\":\"is not under\",\"hierarchical\":true}]");
             sb.Append(",").Append(Json.Q("assignTypes")).Append(":")
               .Append("[\"team\",\"user\",\"role\",\"queue\",\"manager of case owner\",\"case owner\"]");
             sb.Append(",").Append(Json.Q("matchLogic")).Append(":")
               .Append("\"Rules that share a groupNumber are OR'ed together; separate groups are AND'ed. ")
-              .Append("Templates are evaluated in ascending rank order and the first match wins.\"");
+              .Append("Templates are evaluated in ascending rank order and the first match wins. ")
+              .Append("An attribute may be a plain case column, or a one hop path such as ")
+              .Append("customerid.cpc_customersegment to target the customer behind the case. Subject is ")
+              .Append("a tree, so prefer the 'is at or under' operator over 'is' to catch every child ")
+              .Append("subject beneath a node.\"");
 
             sb.Append("}");
 
@@ -162,9 +171,45 @@ namespace Cpc.Plugins
             return map;
         }
 
-        private static void AppendSecurityRoles(StringBuilder sb, IOrganizationService svc)
+        /// <summary>
+        /// Agents offered in the designer picker. Only published, non-system agents: the
+        /// environment carries dozens of first-party msdyn_* agents that a business user must
+        /// never pick, and an unpublished agent fails at runtime with an opaque 404.
+        /// </summary>
+        private static void AppendAgents(StringBuilder sb, IOrganizationService svc)
         {
-            var q = new QueryExpression("role") { ColumnSet = new ColumnSet("name", "roleid") };
+            var q = new QueryExpression("bot")
+            {
+                ColumnSet = new ColumnSet("name", "botid", "schemaname", "publishedon"),
+                Orders = { new OrderExpression("name", OrderType.Ascending) },
+                TopCount = 500,
+            };
+            q.Criteria.AddCondition("statecode", ConditionOperator.Equal, 0);
+
+            sb.Append(",").Append(Json.Q("agents")).Append(":[");
+            var first = true;
+            foreach (var b in svc.RetrieveMultiple(q).Entities)
+            {
+                var schema = b.GetAttributeValue<string>("schemaname") ?? "";
+                if (!b.Contains("publishedon")) continue;
+                if (schema.StartsWith("msdyn_", StringComparison.OrdinalIgnoreCase)
+                    || schema.StartsWith("msfp_", StringComparison.OrdinalIgnoreCase)
+                    || schema.StartsWith("mspp_", StringComparison.OrdinalIgnoreCase)
+                    || schema.StartsWith("msgpt_", StringComparison.OrdinalIgnoreCase)) continue;
+
+                if (!first) sb.Append(",");
+                first = false;
+                sb.Append("{").Append(Json.Q("id")).Append(":").Append(Json.Q(b.Id.ToString()))
+                  .Append(",").Append(Json.Q("name")).Append(":")
+                  .Append(Json.Q(b.GetAttributeValue<string>("name")))
+                  .Append(",").Append(Json.Q("schemaName")).Append(":").Append(Json.Q(schema))
+                  .Append("}");
+            }
+            sb.Append("]");
+        }
+
+        private static void AppendSecurityRoles(StringBuilder sb, IOrganizationService svc)
+        {            var q = new QueryExpression("role") { ColumnSet = new ColumnSet("name", "roleid") };
             q.Criteria.AddCondition("parentroleid", ConditionOperator.Null);
             q.Orders.Add(new OrderExpression("name", OrderType.Ascending));
             sb.Append(",").Append(Json.Q("roles")).Append(":[");
@@ -190,16 +235,131 @@ namespace Cpc.Plugins
         /// </summary>
         private static void AppendCaseAttributes(StringBuilder sb, IOrganizationService svc)
         {
-            var req = new Microsoft.Xrm.Sdk.Messages.RetrieveEntityRequest
+            var rows = UsefulAttributes(svc, "incident");
+            var targets = new Dictionary<string, TargetInfo>(StringComparer.OrdinalIgnoreCase);
+            sb.Append(",").Append(Json.Q("caseAttributes")).Append(":[");
+            var first = true;
+            foreach (var a in rows)
             {
-                LogicalName = "incident",
-                EntityFilters = Microsoft.Xrm.Sdk.Metadata.EntityFilters.Attributes,
-                RetrieveAsIfPublished = true
-            };
-            var resp = (Microsoft.Xrm.Sdk.Messages.RetrieveEntityResponse)svc.Execute(req);
+                if (!first) sb.Append(",");
+                first = false;
+                AppendAttribute(sb, svc, a, targets, a.LogicalName,
+                    a.DisplayName.UserLocalizedLabel.Label, null);
+            }
+            sb.Append("]");
+        }
 
+        /// <summary>
+        /// Attributes reachable one hop from the case. Rules address these with a dotted path such as
+        /// customerid.cpc_customersegment, which lets a process target a property of the customer
+        /// (segment, tier, risk rating) instead of requiring that value to be copied onto every case.
+        /// </summary>
+        private static void AppendRelatedAttributes(StringBuilder sb, IOrganizationService svc)
+        {
+            var hops = new[]
+            {
+                new { Path = "customerid", Label = "Customer", Entities = new[] { "contact", "account" } },
+                new { Path = "primarycontactid", Label = "Contact", Entities = new[] { "contact" } },
+                new { Path = "ownerid", Label = "Owner", Entities = new[] { "systemuser" } },
+            };
+
+            var targets = new Dictionary<string, TargetInfo>(StringComparer.OrdinalIgnoreCase);
+            sb.Append(",").Append(Json.Q("relatedAttributes")).Append(":[");
+            var first = true;
+            foreach (var hop in hops)
+            {
+                // A polymorphic lookup exposes the union of its targets. Where both sides define the
+                // same column (segment on contact and on account) it is listed once.
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var entity in hop.Entities)
+                {
+                    foreach (var a in UsefulAttributes(svc, entity))
+                    {
+                        var path = hop.Path + "." + a.LogicalName;
+                        if (!seen.Add(path)) continue;
+                        if (!first) sb.Append(",");
+                        first = false;
+                        AppendAttribute(sb, svc, a, targets, path,
+                            hop.Label + " \u203a " + a.DisplayName.UserLocalizedLabel.Label, entity);
+                    }
+                }
+            }
+            sb.Append("]");
+        }
+
+        /// <summary>
+        /// The subject tree, flattened with a parent pointer and a path so the rule builder can render
+        /// it without a second round trip. Subject is hierarchical, so a rule on a parent node should
+        /// normally use the "is at or under" operator to catch every descendant.
+        /// </summary>
+        private static void AppendSubjectTree(StringBuilder sb, IOrganizationService svc)
+        {
+            var q = new QueryExpression("subject")
+            {
+                ColumnSet = new ColumnSet("subjectid", "title", "parentsubject"),
+                Orders = { new OrderExpression("title", OrderType.Ascending) }
+            };
+            var rows = svc.RetrieveMultiple(q).Entities;
+
+            var byId = new Dictionary<Guid, Entity>();
+            foreach (var s in rows) byId[s.Id] = s;
+
+            sb.Append(",").Append(Json.Q("subjects")).Append(":[");
+            var first = true;
+            foreach (var s in rows)
+            {
+                if (!first) sb.Append(",");
+                first = false;
+                var parent = s.GetAttributeValue<EntityReference>("parentsubject");
+
+                var names = new List<string>();
+                var depth = 0;
+                var walk = s;
+                var guard = new HashSet<Guid>();
+                while (walk != null && guard.Add(walk.Id) && depth < 12)
+                {
+                    names.Insert(0, walk.GetAttributeValue<string>("title") ?? "");
+                    var pr = walk.GetAttributeValue<EntityReference>("parentsubject");
+                    if (pr == null) break;
+                    Entity next;
+                    if (!byId.TryGetValue(pr.Id, out next)) break;
+                    walk = next;
+                    depth++;
+                }
+
+                sb.Append("{").Append(Json.Q("id")).Append(":").Append(Json.Q(s.Id.ToString()))
+                  .Append(",").Append(Json.Q("title")).Append(":")
+                  .Append(Json.Q(s.GetAttributeValue<string>("title") ?? ""))
+                  .Append(",").Append(Json.Q("parentId")).Append(":")
+                  .Append(parent == null ? "null" : Json.Q(parent.Id.ToString()))
+                  .Append(",").Append(Json.Q("depth")).Append(":")
+                  .Append(depth.ToString(CultureInfo.InvariantCulture))
+                  .Append(",").Append(Json.Q("path")).Append(":")
+                  .Append(Json.Q(string.Join(" \u203a ", names.ToArray())))
+                  .Append("}");
+            }
+            sb.Append("]");
+        }
+
+        /// <summary>Advanced-find visible, labelled attributes with a value editor we can render.</summary>
+        private static List<Microsoft.Xrm.Sdk.Metadata.AttributeMetadata> UsefulAttributes(
+            IOrganizationService svc, string entity)
+        {
             var rows = new List<Microsoft.Xrm.Sdk.Metadata.AttributeMetadata>();
-            foreach (var a in resp.EntityMetadata.Attributes)
+            Microsoft.Xrm.Sdk.Metadata.EntityMetadata md;
+            try
+            {
+                var req = new Microsoft.Xrm.Sdk.Messages.RetrieveEntityRequest
+                {
+                    LogicalName = entity,
+                    EntityFilters = Microsoft.Xrm.Sdk.Metadata.EntityFilters.Attributes,
+                    RetrieveAsIfPublished = true
+                };
+                md = ((Microsoft.Xrm.Sdk.Messages.RetrieveEntityResponse)svc.Execute(req)).EntityMetadata;
+            }
+            catch (Exception) { return rows; }
+
+            foreach (var a in md.Attributes)
             {
                 if (a.IsValidForAdvancedFind == null || a.IsValidForAdvancedFind.Value == false) continue;
                 if (a.AttributeOf != null) continue;
@@ -210,54 +370,64 @@ namespace Cpc.Plugins
             }
             rows.Sort((x, y) => string.Compare(x.DisplayName.UserLocalizedLabel.Label,
                 y.DisplayName.UserLocalizedLabel.Label, StringComparison.OrdinalIgnoreCase));
+            return rows;
+        }
 
-            var targets = new Dictionary<string, TargetInfo>(StringComparer.OrdinalIgnoreCase);
-            sb.Append(",").Append(Json.Q("caseAttributes")).Append(":[");
-            var first = true;
-            foreach (var a in rows)
+        /// <summary>Emits one attribute descriptor, shared by the case and related attribute lists.</summary>
+        private static void AppendAttribute(StringBuilder sb, IOrganizationService svc,
+            Microsoft.Xrm.Sdk.Metadata.AttributeMetadata a, Dictionary<string, TargetInfo> targets,
+            string logicalName, string label, string ownerEntity)
+        {
+            sb.Append("{").Append(Json.Q("logicalName")).Append(":").Append(Json.Q(logicalName))
+              .Append(",").Append(Json.Q("label")).Append(":").Append(Json.Q(label))
+              .Append(",").Append(Json.Q("kind")).Append(":").Append(Json.Q(Kind(a)))
+              .Append(",").Append(Json.Q("custom")).Append(":")
+              .Append(a.IsCustomAttribute.GetValueOrDefault() ? "true" : "false");
+            if (ownerEntity != null)
+                sb.Append(",").Append(Json.Q("ownerEntity")).Append(":").Append(Json.Q(ownerEntity));
+            sb.Append(",").Append(Json.Q("targets")).Append(":[");
+            var lk = a as Microsoft.Xrm.Sdk.Metadata.LookupAttributeMetadata;
+            var hierarchical = false;
+            if (lk != null && lk.Targets != null)
+                for (var i = 0; i < lk.Targets.Length; i++)
+                {
+                    if (i > 0) sb.Append(",");
+                    AppendTarget(sb, svc, lk.Targets[i], targets);
+                    if (ownerEntity != null &&
+                        string.Equals(lk.Targets[i], ownerEntity, StringComparison.OrdinalIgnoreCase))
+                        hierarchical = true;
+                }
+            // A lookup that points back at its own table is a tree, which is what unlocks the
+            // "is at or under" operator in the rule builder.
+            if (lk != null && lk.Targets != null && lk.Targets.Length == 1 && ownerEntity == null)
+                hierarchical = string.Equals(lk.Targets[0], "subject", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(lk.Targets[0], "account", StringComparison.OrdinalIgnoreCase);
+            sb.Append("],").Append(Json.Q("hierarchical")).Append(":")
+              .Append(hierarchical ? "true" : "false")
+              .Append(",").Append(Json.Q("options")).Append(":[");
+            var en = a as Microsoft.Xrm.Sdk.Metadata.EnumAttributeMetadata;
+            if (en != null && en.OptionSet != null)
             {
-                if (!first) sb.Append(",");
-                first = false;
-                sb.Append("{").Append(Json.Q("logicalName")).Append(":").Append(Json.Q(a.LogicalName))
-                  .Append(",").Append(Json.Q("label")).Append(":")
-                  .Append(Json.Q(a.DisplayName.UserLocalizedLabel.Label))
-                  .Append(",").Append(Json.Q("kind")).Append(":").Append(Json.Q(Kind(a)))
-                  .Append(",").Append(Json.Q("custom")).Append(":")
-                  .Append(a.IsCustomAttribute.GetValueOrDefault() ? "true" : "false")
-                  .Append(",").Append(Json.Q("targets")).Append(":[");
-                var lk = a as Microsoft.Xrm.Sdk.Metadata.LookupAttributeMetadata;
-                if (lk != null && lk.Targets != null)
-                    for (var i = 0; i < lk.Targets.Length; i++)
-                    {
-                        if (i > 0) sb.Append(",");
-                        AppendTarget(sb, svc, lk.Targets[i], targets);
-                    }
-                sb.Append("],").Append(Json.Q("options")).Append(":[");
-                var en = a as Microsoft.Xrm.Sdk.Metadata.EnumAttributeMetadata;
-                if (en != null && en.OptionSet != null)
+                var n = 0;
+                foreach (var o in en.OptionSet.Options)
                 {
-                    var n = 0;
-                    foreach (var o in en.OptionSet.Options)
-                    {
-                        if (n++ > 0) sb.Append(",");
-                        var lbl = o.Label != null && o.Label.UserLocalizedLabel != null
-                            ? o.Label.UserLocalizedLabel.Label : "";
-                        sb.Append("{").Append(Json.Q("value")).Append(":")
-                          .Append(o.Value.GetValueOrDefault().ToString(CultureInfo.InvariantCulture))
-                          .Append(",").Append(Json.Q("label")).Append(":").Append(Json.Q(lbl)).Append("}");
-                    }
+                    if (n++ > 0) sb.Append(",");
+                    var lbl = o.Label != null && o.Label.UserLocalizedLabel != null
+                        ? o.Label.UserLocalizedLabel.Label : "";
+                    sb.Append("{").Append(Json.Q("value")).Append(":")
+                      .Append(o.Value.GetValueOrDefault().ToString(CultureInfo.InvariantCulture))
+                      .Append(",").Append(Json.Q("label")).Append(":").Append(Json.Q(lbl)).Append("}");
                 }
-                var bl = a as Microsoft.Xrm.Sdk.Metadata.BooleanAttributeMetadata;
-                if (bl != null && bl.OptionSet != null)
-                {
-                    sb.Append("{").Append(Json.Q("value")).Append(":1,").Append(Json.Q("label")).Append(":")
-                      .Append(Json.Q(LabelOf(bl.OptionSet.TrueOption, "Yes"))).Append("},");
-                    sb.Append("{").Append(Json.Q("value")).Append(":0,").Append(Json.Q("label")).Append(":")
-                      .Append(Json.Q(LabelOf(bl.OptionSet.FalseOption, "No"))).Append("}");
-                }
-                sb.Append("]}");
             }
-            sb.Append("]");
+            var bl = a as Microsoft.Xrm.Sdk.Metadata.BooleanAttributeMetadata;
+            if (bl != null && bl.OptionSet != null)
+            {
+                sb.Append("{").Append(Json.Q("value")).Append(":1,").Append(Json.Q("label")).Append(":")
+                  .Append(Json.Q(LabelOf(bl.OptionSet.TrueOption, "Yes"))).Append("},");
+                sb.Append("{").Append(Json.Q("value")).Append(":0,").Append(Json.Q("label")).Append(":")
+                  .Append(Json.Q(LabelOf(bl.OptionSet.FalseOption, "No"))).Append("}");
+            }
+            sb.Append("]}");
         }
 
         /// <summary>

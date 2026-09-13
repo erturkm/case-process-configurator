@@ -103,8 +103,18 @@ if __name__ == "__main__":
     print("Types")
     t_apply = register_type(asm, "Cpc.Plugins.ApplyCaseProcess", "Apply Case Process")
     t_roll = register_type(asm, "Cpc.Plugins.UpdateCaseRollups", "Update Case Rollups")
+    t_triage = register_type(asm, "Cpc.Plugins.TriageInboundCase", "Triage Inbound Case")
+    t_email = register_type(asm, "Cpc.Plugins.CreateCaseFromEmail", "Create Case From Email")
 
     print("Steps")
+    # Post-operation on email, so the activity parties the platform resolves during
+    # create are readable when deciding which queue and customer the mail belongs to.
+    register_step(t_email, "Create", "email", 40, 0,
+                  "CPC: Create case from inbound queue email", rank=5)
+    # Pre-operation, so the subject is on the record before ApplyCaseProcess (rank 10,
+    # post-operation) tries to match a template against it.
+    register_step(t_triage, "Create", "incident", 20, 0,
+                  "CPC: Triage inbound case subject", rank=5)
     register_step(t_apply, "Create", "incident", 40, 0,
                   "CPC: Apply case process on case create", rank=10)
     register_step(t_roll, "Update", "task", 40, 1,

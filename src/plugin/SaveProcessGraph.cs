@@ -169,6 +169,7 @@ namespace Cpc.Plugins
                 }
 
                 SetOwner(svc, e, n);
+                SetAgentConfig(svc, e, n);
 
                 Guid id;
                 if (serverId != Guid.Empty && existingTasks.ContainsKey(serverId))
@@ -385,6 +386,8 @@ namespace Cpc.Plugins
                 case 8: return "is less than";
                 case 9: return "is empty";
                 case 10: return "is not empty";
+                case 11: return "is at or under";
+                case 12: return "is not under";
                 default: return "is";
             }
         }
@@ -436,6 +439,66 @@ namespace Cpc.Plugins
                 var id = FindByName(svc, "team", "name", fallback);
                 if (id != Guid.Empty) e[P + "fallbackteam"] = new EntityReference("team", id);
             }
+        }
+
+        /// <summary>
+        /// Persists the AI agent block. Everything is cleared first so a task demoted from
+        /// "AI Agent" back to a human assign type does not keep a live agent binding that the
+        /// runtime would still act on.
+        /// </summary>
+        private static void SetAgentConfig(IOrganizationService svc, Entity e, Dictionary<string, object> n)
+        {
+            e[P + "agent"] = null;
+            e[P + "agentprompt"] = null;
+            e[P + "contextscope"] = null;
+            e[P + "outputtarget"] = null;
+            e[P + "agentoutcomemode"] = null;
+            e[P + "autocomplete"] = false;
+            e[P + "confidencethreshold"] = null;
+            e[P + "agenttimeoutmins"] = null;
+
+            if ((Json.Int(n, "assignType") ?? 1) != ProcessRuntime.AssignTypeAiAgent) return;
+
+            var agentName = NameOf(Json.Get(n, "agent"));
+            var agentId = ProcessRuntime.ParseGuid(IdOf(Json.Get(n, "agent")));
+            if (agentId == Guid.Empty && !string.IsNullOrWhiteSpace(agentName))
+                agentId = FindByName(svc, "bot", "name", agentName);
+            if (agentId != Guid.Empty) e[P + "agent"] = new EntityReference("bot", agentId);
+
+            e[P + "agentprompt"] = Json.Str(n, "agentPrompt", "");
+            e[P + "outputtarget"] = new OptionSetValue(Json.Int(n, "outputTarget") ?? 2);
+            e[P + "agentoutcomemode"] = new OptionSetValue(Json.Int(n, "agentOutcomeMode") ?? 2);
+            e[P + "autocomplete"] = Json.Bool(n, "autoComplete") ?? true;
+            e[P + "confidencethreshold"] = Clamp(Json.Int(n, "confidenceThreshold") ?? 70, 0, 100);
+            e[P + "agenttimeoutmins"] = Clamp(Json.Int(n, "agentTimeoutMins") ?? 5, 1, 120);
+
+            var scope = ParseScope(Json.Str(n, "contextScope", ""));
+            if (scope.Count > 0) e[P + "contextscope"] = scope;
+        }
+
+        private static OptionSetValueCollection ParseScope(string csv)
+        {
+            var col = new OptionSetValueCollection();
+            if (string.IsNullOrWhiteSpace(csv)) return col;
+            var seen = new HashSet<int>();
+            foreach (var part in csv.Split(','))
+            {
+                int v;
+                if (!int.TryParse(part.Trim(), out v)) continue;
+                if (seen.Add(v)) col.Add(new OptionSetValue(v));
+            }
+            return col;
+        }
+
+        private static int Clamp(int v, int lo, int hi)
+        {
+            return v < lo ? lo : v > hi ? hi : v;
+        }
+
+        private static string IdOf(object o)
+        {
+            var d = Json.Obj(o);
+            return d == null ? null : Json.Str(d, "id");
         }
 
         private static string NameOf(object o)
