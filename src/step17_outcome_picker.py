@@ -40,6 +40,9 @@ def upload():
     return wid
 
 
+# The one task form CPC authors onto and forks in step57.
+SOURCE_TASK_FORM = "Task"
+
 SECTIONS = (
     '<section name="cpc_outcome_sec" id="{secid}" IsUserDefined="0" locklevel="0" '
     'showlabel="true" showbar="false" columns="1" labelwidth="115" '
@@ -154,12 +157,14 @@ def widen(cols):
 
 
 def add_panel(wid):
-    forms = dv.get(
+    # Only the form CPC forks in step57. Authoring onto every task main form meant the
+    # solution shipped copies of all of them, overwriting Microsoft's on import.
+    forms = [f for f in dv.get(
         "systemforms?$select=formid,name,formxml,type&"
         "$filter=objecttypecode eq 'task' and type eq 2"
-    )["value"]
+    )["value"] if f["name"] == SOURCE_TASK_FORM]
     if not forms:
-        print("  ! no task main form found")
+        print(f"  ! task main form '{SOURCE_TASK_FORM}' not found")
         return
     for f in forms:
         xml = inject(f["formxml"], wid)

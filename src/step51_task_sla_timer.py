@@ -30,6 +30,8 @@ PCF = "mcsla_ModernSlaTimer.ModernSlaTimerControl"
 SUBGRID_CLASSID = "{E7A81278-8635-4d9e-8D4D-59480B391C5B}"
 VIEW_NAME = "Task SLA Timer Source"
 SECTION = "cpc_tasksla_sec"
+# The one task form CPC authors onto and forks in step57.
+SOURCE_TASK_FORM = "Task"
 
 ATTRS = [
     "name", "status", "failuretime", "warningtime", "succeededon",
@@ -146,8 +148,10 @@ def inject(xml, view_id):
 
 
 def add_to_forms(view_id):
-    forms = dv.get("systemforms?$select=formid,name,formxml,type&"
-                   "$filter=objecttypecode eq 'task' and type eq 2")["value"]
+    # Only the form CPC forks in step57 -- see step17 for why.
+    forms = [f for f in dv.get("systemforms?$select=formid,name,formxml,type&"
+                               "$filter=objecttypecode eq 'task' and type eq 2")["value"]
+             if f["name"] == SOURCE_TASK_FORM]
     for f in forms:
         xml = inject(f["formxml"], view_id)
         if xml is None:

@@ -2172,10 +2172,13 @@ function attrByName(ln){
 }
 
 /** Operators offered for a given field: hierarchy comparisons only on tree shaped lookups. */
-function opsFor(attrName){
+function opsFor(attrName, keep){
   var a = attrByName(attrName);
   var hier = !!(a && a.hierarchical);
-  return OPS.filter(function(o){ return hier || HIER_OPS.indexOf(o[0]) < 0; });
+  return OPS.filter(function(o){
+    // Keep the operator the rule already carries even when the column cannot be resolved,
+    // otherwise the select falls back to the first entry and quietly changes the rule.
+    return hier || o[0] === keep || HIER_OPS.indexOf(o[0]) < 0; });
 }
 
 /** The subject tree from the catalogue, indented so the hierarchy is readable in a flat select. */
@@ -2257,8 +2260,8 @@ function paintRules(){
   document.getElementById("ruleGroups").innerHTML = keys.map(function(k, gi){
     var rows = groups[k].map(function(r){
       return '<div class="rulerow" data-rid="' + esc(r.id) + '">'
-        + attrSelect(caseOpts, relOpts, r.attribute)
-        + selectBox("", opsFor(r.attribute), r.operator).replace("<select", '<select data-f="op"')
+        + attrSelect(caseOpts, relOpts, r.attribute, r.attributeLabel)
+        + selectBox("", opsFor(r.attribute, r.operator), r.operator).replace("<select", '<select data-f="op"')
         + '<div data-f="valhost">' + valueEditor(r) + "</div>"
         + '<button class="iconbtn" data-f="del" title="Remove condition">&times;</button>'
         + "</div>";
@@ -2274,12 +2277,21 @@ function paintRules(){
 }
 
 /** Two optgroups so a maker can see at a glance whether a field lives on the case or the customer. */
-function attrSelect(caseOpts, relOpts, value){
+function attrSelect(caseOpts, relOpts, value, label){
   function body(list){
     return list.map(function(o){
       return opt(o[0], o[1], String(o[0]) === String(value)); }).join("");
   }
+  // A stored rule can name a column this environment no longer exposes, for example one that was
+  // retired or hidden from Advanced Find. Without an entry for it the browser silently selects the
+  // first option, which rewrites the rule the moment the maker saves. Surface it instead and keep
+  // the original value selected so saving round trips it unchanged.
+  var known = !value || caseOpts.concat(relOpts).some(function(o){
+    return String(o[0]) === String(value); });
   var html = '<select data-f="attr">';
+  if (!known)
+    html += '<optgroup label="Unavailable in this environment">'
+          + opt(value, (label || value) + " \u2014 column not found", true) + "</optgroup>";
   html += '<optgroup label="This case">' + body(caseOpts) + "</optgroup>";
   if (relOpts.length)
     html += '<optgroup label="Related record">' + body(relOpts) + "</optgroup>";

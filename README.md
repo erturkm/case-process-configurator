@@ -178,7 +178,8 @@ Quick summary:
 ```bash
 # Option A — import the packaged solution (fastest)
 #   Power Platform admin centre -> Solutions -> Import
-#   -> solution/CaseProcessConfigurator_1_1_0_0_managed.zip
+#   -> solution/CaseProcessConfigurator_1_2_0_0_managed.zip
+#   Import the Modern SLA Timer PCF first - see INSTALL.md.
 #   Then run the post-import steps in INSTALL.md.
 
 # Option B — build from source against your own environment
@@ -190,8 +191,14 @@ python3 step1_solution.py && python3 step2_tables.py   # ... see INSTALL.md
 
 > [!IMPORTANT]
 > Installing modifies your environment. It creates tables, registers a plug-in assembly and custom
-> APIs, and **edits shared artefacts** — the Case main forms (including all three Customer Service
-> form variants), the model-driven app site map, and app components. Use a disposable environment.
+> APIs, adds a model-driven app and edits the site map. Use a disposable environment.
+>
+> It does **not** modify any Microsoft form. Since 1.2.0 the solution ships two forms of its own,
+> **Case (CPC)** and **Task (CPC)**, and leaves the stock Case and Task forms untouched — verified
+> by fingerprinting all 26 Case and Task forms in a vanilla Customer Service environment before and
+> after import: 26 of 26 identical, 0 changed, 2 added. Its only non-Customer-Service dependency is
+> the third-party [Modern SLA Timer PCF](https://github.com/moliveirapinto/modern-sla-timer-pcf),
+> which is deliberately not bundled and must be imported first.
 
 ---
 

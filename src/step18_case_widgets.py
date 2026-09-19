@@ -28,7 +28,10 @@ WIDGETS = [
 SEC_PANEL = "cpc_summary_panel"
 SEC_PROCESS = "cpc_summary_process"
 SEC_DOCS = "cpc_summary_docs"
-TARGET_FORMS = ["Case for Interactive experience", "Case", "Case for Multisession experience"]
+# One form, deliberately. This step authors the sections; step57 then forks the result onto
+# a form CPC owns and step58 drops Microsoft's from the solution. Authoring onto three forms
+# meant shipping three copies of Microsoft's Case form and overwriting all of them on import.
+TARGET_FORMS = ["Case"]
 
 IFRAME_CLASS = "{9FDF5F91-88B1-47f4-AD53-C11EFC01A01D}"
 PICKLIST_CLASS = "{3EF39988-22BB-4f0b-BBBE-64B5A3748AEE}"

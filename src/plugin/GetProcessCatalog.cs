@@ -15,6 +15,9 @@ namespace Cpc.Plugins
     public class GetProcessCatalog : IPlugin
     {
         private const string P = "cpc_";
+        // The table a process targets. Everything the rule builder offers is discovered from this
+        // entity's live metadata, so nothing below needs to name a column.
+        private const string PrimaryEntity = "incident";
 
         public void Execute(IServiceProvider sp)
         {
@@ -36,7 +39,7 @@ namespace Cpc.Plugins
                         new ConditionExpression("category", ConditionOperator.Equal, 4),
                         new ConditionExpression("statecode", ConditionOperator.Equal, 1),
                         new ConditionExpression("type", ConditionOperator.Equal, 1),
-                        new ConditionExpression("primaryentity", ConditionOperator.Equal, "incident")
+                        new ConditionExpression("primaryentity", ConditionOperator.Equal, PrimaryEntity)
                     }
                 }
             });
@@ -235,7 +238,7 @@ namespace Cpc.Plugins
         /// </summary>
         private static void AppendCaseAttributes(StringBuilder sb, IOrganizationService svc)
         {
-            var rows = UsefulAttributes(svc, "incident");
+            var rows = UsefulAttributes(svc, PrimaryEntity);
             var targets = new Dictionary<string, TargetInfo>(StringComparer.OrdinalIgnoreCase);
             sb.Append(",").Append(Json.Q("caseAttributes")).Append(":[");
             var first = true;
@@ -250,37 +253,82 @@ namespace Cpc.Plugins
         }
 
         /// <summary>
+        /// Tables that describe the parties to a case. A lookup pointing at one of these is worth
+        /// walking, because a maker filtering "Customer and owner" means the customer or the agent.
+        /// This is a list of *targets*, never of column names: the columns themselves are always
+        /// discovered, so a path can never name a column the org does not actually have.
+        /// </summary>
+        private static bool IsPartyEntity(string entity)
+        {
+            return string.Equals(entity, "account", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(entity, "contact", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(entity, "systemuser", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(entity, "team", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(entity, "lead", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>Currency and other platform plumbing nobody writes a targeting rule against.</summary>
+        private static bool IsSystemTarget(string entity)
+        {
+            return string.Equals(entity, "transactioncurrency", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(entity, "businessunit", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(entity, "owner", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
         /// Attributes reachable one hop from the case. Rules address these with a dotted path such as
         /// customerid.cpc_customersegment, which lets a process target a property of the customer
         /// (segment, tier, risk rating) instead of requiring that value to be copied onto every case.
+        ///
+        /// The hops themselves are discovered from live metadata rather than hard coded. The old
+        /// hard coded list named three lookups and no more, so an entitlement, a parent case or any
+        /// lookup the customer added to their own case table was simply unreachable from the rule
+        /// builder. Reading the lookups off the entity means a lookup added tomorrow is filterable
+        /// with no code change, and -- as the sibling Sales build proved the hard way -- it makes it
+        /// impossible to offer a path to a column the org does not actually have.
         /// </summary>
         private static void AppendRelatedAttributes(StringBuilder sb, IOrganizationService svc)
         {
-            var hops = new[]
-            {
-                new { Path = "customerid", Label = "Customer", Entities = new[] { "contact", "account" } },
-                new { Path = "primarycontactid", Label = "Contact", Entities = new[] { "contact" } },
-                new { Path = "ownerid", Label = "Owner", Entities = new[] { "systemuser" } },
-            };
-
             var targets = new Dictionary<string, TargetInfo>(StringComparer.OrdinalIgnoreCase);
             sb.Append(",").Append(Json.Q("relatedAttributes")).Append(":[");
             var first = true;
-            foreach (var hop in hops)
+
+            foreach (var hop in UsefulAttributes(svc, PrimaryEntity))
             {
+                var lk = hop as Microsoft.Xrm.Sdk.Metadata.LookupAttributeMetadata;
+                if (lk == null || lk.Targets == null || lk.Targets.Length == 0) continue;
+
+                // Audit stamps (created by, modified by on behalf of) point at systemuser and would
+                // otherwise drag a hundred columns each into the picker. A hop is only interesting if
+                // somebody can actually set it, which is exactly what these two flags say.
+                if (!hop.IsValidForCreate.GetValueOrDefault() && !hop.IsValidForUpdate.GetValueOrDefault())
+                    continue;
+
+                // Walk a lookup when it reaches a party, or when someone here added it deliberately.
+                // Everything else (currency, price list, SLA) is plumbing: the lookup is already
+                // filterable as a case column, its internals are not worth the payload.
+                var walk = false;
+                foreach (var t in lk.Targets) if (IsPartyEntity(t)) { walk = true; break; }
+                if (!walk && hop.IsCustomAttribute.GetValueOrDefault())
+                    foreach (var t in lk.Targets) if (!IsSystemTarget(t)) { walk = true; break; }
+                if (!walk) continue;
+
+                // The lookup's own display name, so the group reads the way the form does.
+                var hopLabel = hop.DisplayName.UserLocalizedLabel.Label;
+
                 // A polymorphic lookup exposes the union of its targets. Where both sides define the
                 // same column (segment on contact and on account) it is listed once.
                 var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var entity in hop.Entities)
+                foreach (var entity in lk.Targets)
                 {
                     foreach (var a in UsefulAttributes(svc, entity))
                     {
-                        var path = hop.Path + "." + a.LogicalName;
+                        var path = hop.LogicalName + "." + a.LogicalName;
                         if (!seen.Add(path)) continue;
                         if (!first) sb.Append(",");
                         first = false;
                         AppendAttribute(sb, svc, a, targets, path,
-                            hop.Label + " \u203a " + a.DisplayName.UserLocalizedLabel.Label, entity);
+                            hopLabel + " \u203a " + a.DisplayName.UserLocalizedLabel.Label, entity);
                     }
                 }
             }
@@ -341,6 +389,50 @@ namespace Cpc.Plugins
             sb.Append("]");
         }
 
+        /// <summary>
+        /// Whether a table parents itself, and so can be filtered with "is at or under".
+        /// Read from the relationship metadata rather than a hard coded list of table names.
+        /// Cached per call: a catalog pass asks about the same handful of tables repeatedly.
+        /// </summary>
+        private static bool IsTreeEntity(IOrganizationService svc, string entity)
+        {
+            bool hier;
+            if (TreeCache.TryGetValue(entity, out hier)) return hier;
+            hier = false;
+            try
+            {
+                var req = new Microsoft.Xrm.Sdk.Messages.RetrieveEntityRequest
+                {
+                    LogicalName = entity,
+                    EntityFilters = Microsoft.Xrm.Sdk.Metadata.EntityFilters.Relationships,
+                    RetrieveAsIfPublished = true
+                };
+                var md = ((Microsoft.Xrm.Sdk.Messages.RetrieveEntityResponse)svc.Execute(req)).EntityMetadata;
+                // Dataverse marks the self-referencing relationship that forms the tree, which is the
+                // same flag the platform uses to light up the hierarchy view. Note this lives on the
+                // relationship, not on EntityMetadata -- there is no EntityMetadata.IsHierarchical.
+                if (md.OneToManyRelationships != null)
+                    foreach (var r in md.OneToManyRelationships)
+                        if (r.IsHierarchical.GetValueOrDefault()
+                            && string.Equals(r.ReferencingEntity, entity, StringComparison.OrdinalIgnoreCase))
+                        { hier = true; break; }
+            }
+            catch (Exception) { }
+            TreeCache[entity] = hier;
+            return hier;
+        }
+
+        [ThreadStatic]
+        private static Dictionary<string, bool> _treeCache;
+        private static Dictionary<string, bool> TreeCache
+        {
+            get
+            {
+                return _treeCache ?? (_treeCache =
+                    new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+            }
+        }
+
         /// <summary>Advanced-find visible, labelled attributes with a value editor we can render.</summary>
         private static List<Microsoft.Xrm.Sdk.Metadata.AttributeMetadata> UsefulAttributes(
             IOrganizationService svc, string entity)
@@ -398,10 +490,12 @@ namespace Cpc.Plugins
                         hierarchical = true;
                 }
             // A lookup that points back at its own table is a tree, which is what unlocks the
-            // "is at or under" operator in the rule builder.
+            // "is at or under" operator in the rule builder. Read from the relationship metadata
+            // rather than a list of table names: naming "subject" and "account" meant a customer's
+            // own self-parenting table could never use the hierarchy operators, however obviously
+            // a tree it was.
             if (lk != null && lk.Targets != null && lk.Targets.Length == 1 && ownerEntity == null)
-                hierarchical = string.Equals(lk.Targets[0], "subject", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(lk.Targets[0], "account", StringComparison.OrdinalIgnoreCase);
+                hierarchical = IsTreeEntity(svc, lk.Targets[0]);
             sb.Append("],").Append(Json.Q("hierarchical")).Append(":")
               .Append(hierarchical ? "true" : "false")
               .Append(",").Append(Json.Q("options")).Append(":[");
