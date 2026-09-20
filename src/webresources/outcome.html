@@ -107,8 +107,10 @@ function load(){
   var id = taskId();
   if (!id){ root.innerHTML = '<div class="note">Save the task first to record an outcome.</div>'; return; }
   state.id = id;
-  var sel = "$select=subject,statecode," + P + "availableoutcomes,"
-          + OTHER + "availableoutcomes," + P + "outcomelabel,"
+  // Only ever ask for this solution's own columns. The sibling configurator's column is probed
+  // separately and tolerantly, because it does not exist when this solution is installed alone
+  // and naming it here would fail the whole request with HTTP 400.
+  var sel = "$select=subject,statecode," + P + "availableoutcomes," + P + "outcomelabel,"
           + P + "outcomecomment," + P + "branchpath";
   fetch(apiRoot() + "tasks(" + id + ")?" + sel, {
     credentials: "same-origin",
@@ -117,6 +119,21 @@ function load(){
   .then(function(r){ if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
   .then(function(t){ paint(t); })
   .catch(function(e){ root.innerHTML = '<div class="err">' + esc(e.message) + "</div>"; });
+}
+
+/* The other configurator may or may not be installed alongside this one. Asking for its column
+   returns 400 when it is absent, so the probe resolves to false rather than propagating. */
+function foreignOutcomes(id){
+  return fetch(apiRoot() + "tasks(" + id + ")?$select=" + OTHER + "availableoutcomes", {
+      credentials: "same-origin",
+      headers: { Accept: "application/json", "OData-Version": "4.0", "OData-MaxVersion": "4.0" } })
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(j){
+      if (!j) return false;
+      try { return JSON.parse(j[OTHER + "availableoutcomes"] || "[]").length > 0; }
+      catch(e){ return false; }
+    })
+    .catch(function(){ return false; });
 }
 
 function paint(t){
@@ -138,12 +155,12 @@ function paint(t){
   if (!list.length){
     /* The task form is shared with the other configurator. If the task plainly belongs to it,
        say nothing at all rather than stack two contradictory notices on one form. */
-    var foreign = false;
-    try { foreign = JSON.parse(t[OTHER + "availableoutcomes"] || "[]").length > 0; } catch(e){}
-    root.innerHTML = foreign ? "" :
-      '<div class="note">This task is not part of a configured case process, so there '
-      + "are no outcomes to pick. Close it the normal way.</div>";
-    if (foreign) document.body.style.display = "none";
+    foreignOutcomes(state.id).then(function(foreign){
+      root.innerHTML = foreign ? "" :
+        '<div class="note">This task is not part of a configured case process, so there '
+        + "are no outcomes to pick. Close it the normal way.</div>";
+      if (foreign) document.body.style.display = "none";
+    });
     return;
   }
   state.outcomes = list;

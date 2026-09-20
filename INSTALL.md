@@ -62,7 +62,7 @@ Additional prerequisites **only if building from source** (Option B):
    first** if you have not already — see Prerequisites above. The import fails without it.
 2. Go to the [Power Platform admin centre](https://admin.powerplatform.microsoft.com/) → your
    environment → **Solutions** → **Import solution**.
-3. Choose `solution/CaseProcessConfigurator_1_2_0_0_managed.zip`.
+3. Choose `solution/CaseProcessConfigurator_1_2_1_0_managed.zip`.
    *(Use the unmanaged zip instead if you intend to modify and rebuild the solution.)*
 4. Accept the plug-in assembly registration prompt when asked.
 5. Wait for the import to complete, then **Publish all customizations**.

@@ -29,7 +29,7 @@ https://github.com/moliveirapinto/modern-sla-timer-pcf
 
 Usage:
     python3 step60_package.py                 # both zips into ./dist
-    python3 step60_package.py --version 1.2.0.0
+    python3 step60_package.py --version 1.2.1.0
 """
 import argparse
 import base64

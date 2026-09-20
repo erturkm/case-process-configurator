@@ -178,7 +178,7 @@ Quick summary:
 ```bash
 # Option A — import the packaged solution (fastest)
 #   Power Platform admin centre -> Solutions -> Import
-#   -> solution/CaseProcessConfigurator_1_2_0_0_managed.zip
+#   -> solution/CaseProcessConfigurator_1_2_1_0_managed.zip
 #   Import the Modern SLA Timer PCF first - see INSTALL.md.
 #   Then run the post-import steps in INSTALL.md.
 
